@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sysprep answer file — used on FIRST BOOT AT THE DESTINATION, not during the
+  build.
+
+  This is a different file from packer/windows/answer/Autounattend.xml, and
+  confusing the two is the classic sysprep mistake. The build answer file
+  contains the build-time Administrator password and an auto-logon; shipping it
+  inside the image would bake both into every VM created from it.
+
+  This file therefore contains NO credentials and NO auto-logon. It exists to
+  make the generalised image come up unattended enough to be reachable by
+  whatever configuration management the consuming team uses, and no further:
+  the image deliberately does not decide the deployed machine's name, domain,
+  accounts or network configuration.
+
+  Managed by the harden_windows role. Regenerated on every build.
+-->
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+
+  <settings pass="generalize">
+    <component name="Microsoft-Windows-PnpSysprep"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <!--
+        Do NOT persist device driver state across generalisation. The build ran
+        on one set of virtual hardware and the image may be deployed on another —
+        the whole reason /mode:vm exists is that a VM's hardware changes between
+        hypervisors. Persisting it produces first-boot device failures that are
+        very hard to attribute later.
+      -->
+      <PersistAllDeviceInstalls>false</PersistAllDeviceInstalls>
+      <DoNotCleanUpNonPresentDevices>false</DoNotCleanUpNonPresentDevices>
+    </component>
+  </settings>
+
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <InputLocale>0809:00000809</InputLocale>
+      <SystemLocale>en-GB</SystemLocale>
+      <UILanguage>en-GB</UILanguage>
+      <UserLocale>en-GB</UserLocale>
+    </component>
+
+    <component name="Microsoft-Windows-Shell-Setup"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <TimeZone>UTC</TimeZone>
+
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>3</ProtectYourPC>
+        <!--
+          SkipMachineOOBE / SkipUserOOBE are deliberately NOT used. They are
+          deprecated, and they suppress OOBE steps that a deployment legitimately
+          needs to run — including the one that sets a local Administrator
+          password. An image that skips them boots to a machine with no defined
+          administrator credential, which is a worse problem than an OOBE prompt.
+        -->
+      </OOBE>
+
+      <!--
+        No <UserAccounts>, and no <AutoLogon>. Deliberately.
+
+        The build account's password must not survive generalisation, and the
+        deployed machine's credentials are the deployment's decision, not the
+        image's. Sysprep disables the built-in Administrator during
+        generalisation; the consuming team sets it, or joins a domain, or uses
+        whatever their platform provides.
+      -->
+    </component>
+  </settings>
+</unattend>

@@ -1,0 +1,57 @@
+---
+# CIS 9.x — Windows Firewall, and RDP.
+
+- name: 9.1–9.3 | Enable the firewall on all three profiles with inbound blocked
+  # Domain, Private and Public all configured. Setting only the profile the build
+  # machine happens to be on is a very common gap — a deployed VM joins a domain
+  # or moves to a different network and lands on an unconfigured profile.
+  ansible.windows.win_firewall:
+    profiles: [Domain, Private, Public]
+    state: enabled
+    inbound_action: block
+    outbound_action: allow
+  # Outbound allow, matching the Linux images: a golden image cannot know what
+  # its eventual workload needs to reach, and egress rules guessed at build time
+  # get flushed by the first team to deploy it. See IMAGE-STANDARD.md.
+
+- name: 9.x | Log dropped packets on every profile
+  ansible.windows.win_firewall:
+    profiles: [Domain, Private, Public]
+    state: enabled
+  notify: Configure firewall logging
+
+- name: 2.3.x | Ensure RDP is enabled
+  # Deliberately left on. Disabling RDP in the image is tempting and wrong: it is
+  # the only interactive recovery path on a Windows VM whose network
+  # configuration has gone wrong, and a team that needs it will re-enable it by a
+  # route nobody reviews.
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server
+    name: fDenyTSConnections
+    data: "{{ 0 if harden_windows_rdp_enabled else 1 }}"
+    type: dword
+
+- name: 18.x | Require Network Level Authentication for RDP
+  # NLA authenticates BEFORE a session is created, which is what makes RDP
+  # defensible at all — without it the pre-auth attack surface is the full RDP
+  # stack, which is where BlueKeep lived.
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp
+    name: UserAuthentication
+    data: 1
+    type: dword
+  when: harden_windows_rdp_require_nla
+
+- name: 18.x | Require TLS as the RDP security layer with high encryption
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: dword
+  loop:
+    # SecurityLayer 2 = TLS, rather than the legacy RDP security layer.
+    - {name: SecurityLayer, data: 2}
+    # MinEncryptionLevel 3 = 128-bit both directions.
+    - {name: MinEncryptionLevel, data: 3}
+  loop_control:
+    label: "{{ item.name }}"

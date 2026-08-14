@@ -1,0 +1,110 @@
+---
+# CIS 1.1 – 2.3 — account policy and local security options.
+#
+# Numbers mirror harden_linux so both families make the same claim: 14-character
+# minimum, 365-day maximum age, lockout after 5 attempts.
+
+- name: 1.1.x | Configure password policy
+  community.windows.win_security_policy:
+    section: System Access
+    key: "{{ item.key }}"
+    value: "{{ item.value }}"
+  loop:
+    - {key: MinimumPasswordLength, value: "{{ harden_windows_password_min_length }}"}
+    - {key: MaximumPasswordAge, value: "{{ harden_windows_password_max_age }}"}
+    - {key: MinimumPasswordAge, value: "{{ harden_windows_password_min_age }}"}
+    - {key: PasswordHistorySize, value: "{{ harden_windows_password_history }}"}
+    - {key: PasswordComplexity, value: 1}
+    - {key: ClearTextPassword, value: 0}
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: 1.2.x | Configure account lockout policy
+  community.windows.win_security_policy:
+    section: System Access
+    key: "{{ item.key }}"
+    value: "{{ item.value }}"
+  loop:
+    - {key: LockoutBadCount, value: "{{ harden_windows_lockout_threshold }}"}
+    - {key: LockoutDuration, value: "{{ harden_windows_lockout_duration }}"}
+    - {key: ResetLockoutCount, value: "{{ harden_windows_lockout_window }}"}
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: 2.3.1.1 | Disable the built-in Guest account
+  ansible.windows.win_user:
+    name: Guest
+    account_disabled: true
+  failed_when: false
+
+- name: 2.3.7.1 | Do not display the last signed-in user
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: DontDisplayLastUserName
+    data: 1
+    type: dword
+
+- name: 2.3.7.x | Require Ctrl+Alt+Del before sign-in
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: DisableCAD
+    data: 0
+    type: dword
+
+- name: 2.3.7.x | Present a legal notice before sign-in
+  # Same wording as the Linux /etc/issue.net banner, and generic for the same
+  # reason: naming the organisation or OS version helps an attacker, not a user.
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: string
+  loop:
+    - name: legalnoticecaption
+      data: "AUTHORISED ACCESS ONLY"
+    - name: legalnoticetext
+      data: >-
+        This system is restricted to authorised users for legitimate business
+        purposes. Unauthorised access is prohibited and may be subject to legal
+        action. All activity is logged and monitored. Disconnect immediately if
+        you are not an authorised user.
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: 2.3.10.x | Restrict anonymous enumeration of shares and accounts
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: dword
+  loop:
+    - {name: RestrictAnonymous, data: 1}
+    - {name: RestrictAnonymousSAM, data: 1}
+    - {name: EveryoneIncludesAnonymous, data: 0}
+    # NoLMHash — do not store the LAN Manager hash, which is trivially crackable.
+    - {name: NoLMHash, data: 1}
+    # LmCompatibilityLevel 5 — send NTLMv2 only, refuse LM and NTLM.
+    - {name: LmCompatibilityLevel, data: 5}
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: 2.3.11.x | Require SMB signing on both client and server
+  ansible.windows.win_regedit:
+    path: "{{ item.path }}"
+    name: "{{ item.name }}"
+    data: 1
+    type: dword
+  loop:
+    - path: HKLM:\SYSTEM\CurrentControlSet\Services\LanManServer\Parameters
+      name: RequireSecuritySignature
+    - path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters
+      name: RequireSecuritySignature
+  loop_control:
+    label: "{{ item.path | basename }}/{{ item.name }}"
+
+- name: 2.3.17.1 | Enable UAC admin approval mode for the built-in Administrator
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: FilterAdministratorToken
+    data: 1
+    type: dword

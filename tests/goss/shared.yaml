@@ -1,0 +1,413 @@
+---
+# goss — assertions true of EVERY Linux image this factory produces.
+#
+# THE CONTRACT: every claim in docs/IMAGE-STANDARD.md has an assertion here, and
+# every assertion here corresponds to a claim there. If a control is in the
+# standard there is a test for it; if there is no test, the control is not
+# claimed. That is what makes the standard a contract rather than a description.
+#
+# Runs INSIDE the guest as the last step before shutdown, so it tests the image
+# rather than the template that claims to build it. This is the control worth
+# trusting — see ADR-0005 on why the Packer template scanning is not.
+#
+# WHAT THIS SUITE CANNOT ASSERT, stated here rather than left to be assumed:
+# the build account, the ephemeral SSH key, machine-id, the SSH host keys and
+# cloud-init's state are all removed by the finalisation script, which runs at
+# SHUTDOWN — after this. At the moment these assertions run the build account
+# still exists and is still required, and cloud-init state has been recreated by
+# the very boot that is running these tests. Those removals are verified against
+# the artefact offline. See ADR-0015.
+#
+# An earlier version of this suite asserted cloud-init state was cleared and
+# failed, correctly: it was claiming something that is not true at the point the
+# claim is made. Deleting the assertion is the right fix; making it pass at this
+# point in the build would have required weakening it to mean nothing.
+
+file:
+  # --- Identity metadata (IMAGE-STANDARD: "Identity metadata") ---------------
+  /etc/image-build-info:
+    exists: true
+    mode: "0444"
+    owner: root
+    group: root
+    filetype: file
+    contains:
+      - "IMAGE_NAME="
+      - "IMAGE_VERSION="
+      - "GIT_COMMIT="
+      - "SOURCE_ISO_CHECKSUM="
+      - "HARDENED=true"
+      - "HARDENING_ROLE=harden_linux"
+
+  # --- CIS 5.2: SSH configuration -------------------------------------------
+  /etc/ssh/sshd_config:
+    exists: true
+    mode: "0600"
+    owner: root
+    group: root
+
+  /etc/ssh/sshd_config.d/00-cis-hardening.conf:
+    exists: true
+    mode: "0600"
+    owner: root
+    group: root
+    contains:
+      # Asserted as anchored regexes, not substrings. "PermitRootLogin no" as a
+      # plain substring also matches a commented-out line, which is exactly the
+      # false pass this suite exists to prevent.
+      - "/^PermitRootLogin no$/"
+      - "/^PasswordAuthentication no$/"
+      - "/^PermitEmptyPasswords no$/"
+      - "/^PermitUserEnvironment no$/"
+      - "/^IgnoreRhosts yes$/"
+      - "/^HostbasedAuthentication no$/"
+      - "/^X11Forwarding no$/"
+      - "/^AllowTcpForwarding no$/"
+      - "/^MaxAuthTries 4$/"
+      - "/^Banner \\/etc\\/issue.net$/"
+
+  # --- CIS 1.1.1: filesystem modules ----------------------------------------
+  /etc/modprobe.d/99-cis-filesystems.conf:
+    exists: true
+    mode: "0644"
+    contains:
+      # Both halves. `install ... /bin/true` blocks explicit modprobe; `blacklist`
+      # blocks udev autoloading. Testing only one would pass a half-applied
+      # control.
+      - "/^install cramfs \\/bin\\/true$/"
+      - "/^blacklist cramfs$/"
+      - "/^install squashfs \\/bin\\/true$/"
+      - "/^blacklist squashfs$/"
+      - "/^install usb-storage \\/bin\\/true$/"
+      - "/^blacklist usb-storage$/"
+
+  # --- CIS 3.x: kernel parameters -------------------------------------------
+  /etc/sysctl.d/99-cis.conf:
+    exists: true
+    mode: "0644"
+    owner: root
+    group: root
+
+  # --- CIS 1.7: banner ------------------------------------------------------
+  /etc/issue.net:
+    exists: true
+    mode: "0644"
+    owner: root
+    group: root
+    contains:
+      - "AUTHORISED ACCESS ONLY"
+      # Negation is a "!" prefix inside `contains`. goss has no `contains-not`
+      # attribute for file resources and errors out if given one:
+      #   invalid Attribute for File:...: contains-not
+      #
+      # The banner must NOT disclose the OS. A default /etc/issue.net contains
+      # \S and \r, which expand to the distribution name and kernel release —
+      # free reconnaissance for anyone who has not authenticated yet.
+      - "!/\\\\S/"
+      - "!/\\\\r/"
+
+  /etc/issue:
+    exists: true
+    mode: "0644"
+
+  # --- CIS 5.1: cron --------------------------------------------------------
+  /etc/cron.allow:
+    exists: true
+    mode: "0600"
+    owner: root
+    group: root
+
+  /etc/at.allow:
+    exists: true
+    mode: "0600"
+    owner: root
+    group: root
+
+  # cron.deny must be ABSENT. Its presence alongside cron.allow means the
+  # allow-list model was configured incorrectly — cron.deny is ignored when
+  # cron.allow exists, so a lingering file gives false comfort.
+  /etc/cron.deny:
+    exists: false
+
+  /etc/at.deny:
+    exists: false
+
+  # --- CIS 5.5: umask and shell timeout -------------------------------------
+  /etc/profile.d/99-cis-umask.sh:
+    exists: true
+    mode: "0644"
+    contains:
+      - "/^umask 027$/"
+
+  /etc/profile.d/99-cis-tmout.sh:
+    exists: true
+    mode: "0644"
+    contains:
+      - "/^readonly TMOUT$/"
+
+  # --- Audit ----------------------------------------------------------------
+  /etc/audit/rules.d/99-cis.rules:
+    exists: true
+    mode: "0640"
+    owner: root
+    group: root
+    contains:
+      - "/-w \\/etc\\/passwd -p wa -k identity/"
+      - "/-w \\/etc\\/shadow -p wa -k identity/"
+      - "/-w \\/etc\\/sudoers -p wa -k identity/"
+      - "/-w \\/usr\\/bin\\/sudo -p x -k privileged/"
+      # -e 2 is deliberately NOT applied — see IMAGE-STANDARD.md's not-applied
+      # table. Asserting its absence stops it being enabled by accident, which
+      # would freeze audit configuration on every deployed VM. Negated with a
+      # "!" prefix; goss has no contains-not attribute.
+      - "!/^-e 2$/"
+
+  /var/log/audit:
+    exists: true
+    filetype: directory
+    mode: "0700"
+    owner: root
+    group: root
+
+  # --- The build's temporary sudoers file must be gone ----------------------
+  # This one CAN be tested here: the harden_linux role does not remove it (the
+  # finalisation script does, at shutdown), so this assertion documents the
+  # current state honestly rather than claiming a removal that has not happened.
+  # It is deliberately commented out rather than deleted — see ADR-0015.
+  #
+  # /etc/sudoers.d/90-packer-build:
+  #   exists: false
+
+package:
+  # --- CIS 2.3: legacy clients removed --------------------------------------
+  telnet:
+    installed: false
+  # Named per-distribution in the OS-specific suites, because the package names
+  # differ (rsh-client on Debian, rsh on RHEL).
+
+  # --- Required for the image to be manageable ------------------------------
+  sudo:
+    installed: true
+  chrony:
+    installed: true
+  openssh-server:
+    installed: true
+
+service:
+  # The SSH unit is asserted per-distribution, NOT here: it is `sshd` on RHEL and
+  # `ssh` on Debian. Asserting `sshd` in the shared suite passed on Rocky and
+  # failed on Ubuntu against a perfectly healthy sshd.
+  auditd:
+    enabled: true
+    running: true
+
+user:
+  root:
+    exists: true
+    uid: 0
+    gid: 0
+    home: /root
+
+command:
+  # --- CIS 1.1.2-1.1.9: mount options ---------------------------------------
+  # findmnt is used rather than goss's `mount` resource because the mount
+  # resource compares the full option list, which includes kernel-added options
+  # (relatime, seclabel) that differ between the two distributions. Asserting the
+  # specific options is what the standard actually claims.
+  tmp-mount-options:
+    exec: "findmnt -no OPTIONS /tmp"
+    exit-status: 0
+    stdout:
+      - "/nodev/"
+      - "/nosuid/"
+      - "/noexec/"
+
+  var-tmp-mount-options:
+    exec: "findmnt -no OPTIONS /var/tmp"
+    exit-status: 0
+    stdout:
+      - "/nodev/"
+      - "/nosuid/"
+      - "/noexec/"
+
+  home-mount-options:
+    exec: "findmnt -no OPTIONS /home"
+    exit-status: 0
+    stdout:
+      - "/nodev/"
+      - "/nosuid/"
+
+  var-log-mount-options:
+    exec: "findmnt -no OPTIONS /var/log"
+    exit-status: 0
+    stdout:
+      - "/nodev/"
+      - "/nosuid/"
+      - "/noexec/"
+
+  var-log-audit-mount-options:
+    exec: "findmnt -no OPTIONS /var/log/audit"
+    exit-status: 0
+    stdout:
+      - "/nodev/"
+      - "/nosuid/"
+      - "/noexec/"
+
+  dev-shm-mount-options:
+    exec: "findmnt -no OPTIONS /dev/shm"
+    exit-status: 0
+    stdout:
+      - "/nodev/"
+      - "/nosuid/"
+      - "/noexec/"
+
+  # --- Separate filesystems exist (phase 1 partition layout) ----------------
+  separate-filesystems:
+    exec: "findmnt -no TARGET --real | sort | tr '\\n' ' '"
+    exit-status: 0
+    stdout:
+      - "/\\/boot/"
+      - "/\\/home/"
+      - "/\\/var/"
+      - "/\\/var\\/log/"
+      - "/\\/var\\/log\\/audit/"
+      - "/\\/var\\/tmp/"
+      - "/\\/tmp/"
+
+  # --- Mandatory access control is enforcing --------------------------------
+  # "mandatory access control", not "SELinux" — true of both families and
+  # testable on both. See ADR-0014, which exists because assuming otherwise
+  # failed a build.
+  mandatory-access-control-enforcing:
+    exec: |
+      if command -v getenforce >/dev/null 2>&1; then
+        [ "$(getenforce)" = "Enforcing" ] && echo ENFORCING
+      elif command -v aa-enabled >/dev/null 2>&1; then
+        [ "$(aa-enabled)" = "Yes" ] && echo ENFORCING
+      fi
+    exit-status: 0
+    stdout:
+      - "ENFORCING"
+
+  # --- CIS 5.6.1: only root has UID 0 ---------------------------------------
+  no-extra-uid0-accounts:
+    exec: "awk -F: '($3 == 0) { print $1 }' /etc/passwd | grep -vx root | wc -l"
+    exit-status: 0
+    stdout:
+      - "0"
+
+  # --- CIS 5.5.1: password ageing -------------------------------------------
+  password-max-days:
+    exec: "grep -E '^PASS_MAX_DAYS' /etc/login.defs | awk '{print $2}'"
+    exit-status: 0
+    stdout:
+      - "365"
+
+  login-defs-umask:
+    exec: "grep -E '^UMASK' /etc/login.defs | awk '{print $2}'"
+    exit-status: 0
+    stdout:
+      - "027"
+
+  # --- CIS 5.3.1: password quality ------------------------------------------
+  pwquality-minlen:
+    exec: "grep -E '^minlen' /etc/security/pwquality.conf | tr -d ' ' | cut -d= -f2"
+    exit-status: 0
+    stdout:
+      - "14"
+
+  # --- CIS 5.4.2: account lockout -------------------------------------------
+  faillock-deny:
+    exec: "grep -E '^deny' /etc/security/faillock.conf | tr -d ' ' | cut -d= -f2"
+    exit-status: 0
+    stdout:
+      - "5"
+
+  # --- sshd config actually parses ------------------------------------------
+  # The hardened drop-in is validated with `sshd -t` before it is written, but
+  # asserting it here catches the case where a later change lands badly. An
+  # image whose sshd will not start is an image nobody can log into.
+  sshd-config-valid:
+    exec: "sshd -t && echo SSHD_CONFIG_OK"
+    exit-status: 0
+    stdout:
+      - "SSHD_CONFIG_OK"
+
+  # --- The drop-in is actually in effect ------------------------------------
+  # THE MOST IMPORTANT ASSERTION IN THIS FILE. Testing the file's contents only
+  # proves the file exists; `sshd -T` prints the EFFECTIVE configuration after
+  # every Include and Match block has been resolved. A drop-in that is included
+  # too late loses silently, and the file-contents test above would still pass.
+  sshd-effective-config:
+    exec: "sshd -T 2>/dev/null | tr 'A-Z' 'a-z'"
+    exit-status: 0
+    stdout:
+      - "/^permitrootlogin no$/"
+      - "/^passwordauthentication no$/"
+      - "/^permitemptypasswords no$/"
+      - "/^x11forwarding no$/"
+      - "/^maxauthtries 4$/"
+      - "/^ignorerhosts yes$/"
+      - "/^hostbasedauthentication no$/"
+
+  # --- CIS 3.x: kernel parameters are LIVE, not merely written --------------
+  # Same reasoning as sshd -T: a value in /etc/sysctl.d proves a file was
+  # written, not that the kernel took it. Reading it back from the running
+  # kernel is the assertion the standard actually makes.
+  sysctl-ip-forward:
+    exec: "sysctl -n net.ipv4.ip_forward"
+    exit-status: 0
+    stdout: ["0"]
+
+  sysctl-accept-redirects:
+    exec: "sysctl -n net.ipv4.conf.all.accept_redirects"
+    exit-status: 0
+    stdout: ["0"]
+
+  sysctl-accept-source-route:
+    exec: "sysctl -n net.ipv4.conf.all.accept_source_route"
+    exit-status: 0
+    stdout: ["0"]
+
+  sysctl-log-martians:
+    exec: "sysctl -n net.ipv4.conf.all.log_martians"
+    exit-status: 0
+    stdout: ["1"]
+
+  sysctl-tcp-syncookies:
+    exec: "sysctl -n net.ipv4.tcp_syncookies"
+    exit-status: 0
+    stdout: ["1"]
+
+  sysctl-randomize-va-space:
+    exec: "sysctl -n kernel.randomize_va_space"
+    exit-status: 0
+    stdout: ["2"]
+
+  sysctl-suid-dumpable:
+    exec: "sysctl -n fs.suid_dumpable"
+    exit-status: 0
+    stdout: ["0"]
+
+  sysctl-ptrace-scope:
+    exec: "sysctl -n kernel.yama.ptrace_scope"
+    exit-status: 0
+    stdout: ["1"]
+
+  # --- No swap (IMAGE-STANDARD: "No swap, deliberately") --------------------
+  no-swap-configured:
+    exec: "swapon --show --noheadings | wc -l"
+    exit-status: 0
+    stdout: ["0"]
+
+  # --- Host firewall is active, default deny inbound ------------------------
+  firewall-active:
+    exec: |
+      if command -v firewall-cmd >/dev/null 2>&1; then
+        firewall-cmd --state >/dev/null 2>&1 && echo FIREWALL_ACTIVE
+      elif command -v ufw >/dev/null 2>&1; then
+        ufw status 2>/dev/null | grep -qi '^Status: active' && echo FIREWALL_ACTIVE
+      fi
+    exit-status: 0
+    stdout:
+      - "FIREWALL_ACTIVE"

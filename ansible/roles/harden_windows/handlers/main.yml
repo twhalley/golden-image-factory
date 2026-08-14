@@ -1,0 +1,9 @@
+---
+- name: Configure firewall logging
+  # Dropped-packet logging is not exposed by win_firewall, so it is set through
+  # netsh. Size-bounded for the same reason the event logs are: a log that can
+  # grow without limit is an availability problem, not a security control.
+  ansible.windows.win_shell: |
+    netsh advfirewall set allprofiles logging droppedconnections enable
+    netsh advfirewall set allprofiles logging maxfilesize 16384
+  changed_when: true

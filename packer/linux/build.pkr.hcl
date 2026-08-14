@@ -13,7 +13,23 @@ build {
   // is phase 4's goss suite, and claiming it here would put the claim in the
   // wrong place. This step exists so a build that produces an unusable image
   // fails now rather than at test time.
-  provisioner "shell" {
+  provisioner "shell" { // remote_folder, because /tmp is noexec after phase 2.
+    //
+    // Packer's shell provisioner uploads its script to /tmp and executes it.
+    // harden_linux mounts /tmp with noexec (CIS 1.1.2), so from that point on
+    // every shell provisioner fails with:
+    //     bash: line 1: /tmp/script_NNNN.sh: Permission denied
+    // and exit status 126, which looks like a broken script rather than a
+    // working mount option.
+    //
+    // This is the hardening doing exactly what it is supposed to do, to the
+    // build tooling. /home is mounted nodev,nosuid but deliberately NOT noexec
+    // (see harden_linux defaults), so the build account's home works and the
+    // control stays intact. Weakening /tmp to make the tooling happy would be
+    // the wrong way round, and is precisely the compromise this repo argues
+    // against making.
+    remote_folder = "/home/${var.build_username}"
+
     inline = [
       "set -euo pipefail",
       "echo '--- image build info ---'",
@@ -65,9 +81,125 @@ build {
     ]
   }
 
-  // Phase 4's goss suite runs here, before finalisation removes the build
-  // account. Deliberately absent until phase 2 is proven — a stub that looks
-  // like a test gate is worse than none.
+  // ---------------------------------------------------------------------
+  // Phase 4 — the test gate.
+  //
+  // Runs INSIDE the guest, as the last thing before shutdown, so it tests the
+  // built image rather than the template that claims to build it. A failing
+  // assertion fails the build and no artefact is produced.
+  //
+  // It runs BEFORE the finalisation script (which removes the build account and
+  // the SSH host keys at shutdown), so it cannot assert those removals — see
+  // ADR-0015 and the header of tests/goss/shared.yaml. Stated there rather than
+  // silently omitted.
+  // ---------------------------------------------------------------------
+  provisioner "shell" { // remote_folder, because /tmp is noexec after phase 2.
+    //
+    // Packer's shell provisioner uploads its script to /tmp and executes it.
+    // harden_linux mounts /tmp with noexec (CIS 1.1.2), so from that point on
+    // every shell provisioner fails with:
+    //     bash: line 1: /tmp/script_NNNN.sh: Permission denied
+    // and exit status 126, which looks like a broken script rather than a
+    // working mount option.
+    //
+    // This is the hardening doing exactly what it is supposed to do, to the
+    // build tooling. /home is mounted nodev,nosuid but deliberately NOT noexec
+    // (see harden_linux defaults), so the build account's home works and the
+    // control stays intact. Weakening /tmp to make the tooling happy would be
+    // the wrong way round, and is precisely the compromise this repo argues
+    // against making.
+    remote_folder = "/home/${var.build_username}"
+
+    // The file provisioner will not create the destination directory, and
+    // uploading a directory into a path that does not exist fails with
+    // "scp: /tmp/goss/: Not a directory" — which reads like a permissions
+    // problem and is not one.
+    inline         = ["mkdir -p /tmp/goss"]
+    inline_shebang = "/bin/bash -e"
+  }
+
+  provisioner "file" {
+    source      = "${path.root}/../../tests/goss/"
+    destination = "/tmp/goss"
+  }
+
+  provisioner "shell" { // remote_folder, because /tmp is noexec after phase 2.
+    //
+    // Packer's shell provisioner uploads its script to /tmp and executes it.
+    // harden_linux mounts /tmp with noexec (CIS 1.1.2), so from that point on
+    // every shell provisioner fails with:
+    //     bash: line 1: /tmp/script_NNNN.sh: Permission denied
+    // and exit status 126, which looks like a broken script rather than a
+    // working mount option.
+    //
+    // This is the hardening doing exactly what it is supposed to do, to the
+    // build tooling. /home is mounted nodev,nosuid but deliberately NOT noexec
+    // (see harden_linux defaults), so the build account's home works and the
+    // control stays intact. Weakening /tmp to make the tooling happy would be
+    // the wrong way round, and is precisely the compromise this repo argues
+    // against making.
+    remote_folder = "/home/${var.build_username}"
+
+    inline = [
+      "set -euo pipefail",
+      "echo '--- installing goss ---'",
+      "curl -fsSL -o /tmp/goss.tar.gz https://github.com/goss-org/goss/releases/download/v${var.goss_version}/goss_${var.goss_version}_linux_x86_64.tar.gz",
+      "echo \"${var.goss_sha256}  /tmp/goss.tar.gz\" | sha256sum -c -",
+      // Extracted to its own directory: /tmp/goss is the uploaded test suite,
+      // and tar would otherwise try to write the `goss` binary over it —
+      // "tar: goss: Cannot open: File exists".
+      "mkdir -p /tmp/goss-bin",
+      "tar xzf /tmp/goss.tar.gz -C /tmp/goss-bin goss",
+      "sudo install -m 0755 /tmp/goss-bin/goss /usr/local/bin/goss",
+      // Absolute path from here on. sudo resets PATH to its compiled-in
+      // secure_path, which on RHEL does not include /usr/local/bin — so
+      // `sudo goss` fails with "command not found" even though `goss` works.
+      "/usr/local/bin/goss --version",
+    ]
+    inline_shebang = "/bin/bash -e"
+  }
+
+  provisioner "shell" { // remote_folder, because /tmp is noexec after phase 2.
+    //
+    // Packer's shell provisioner uploads its script to /tmp and executes it.
+    // harden_linux mounts /tmp with noexec (CIS 1.1.2), so from that point on
+    // every shell provisioner fails with:
+    //     bash: line 1: /tmp/script_NNNN.sh: Permission denied
+    // and exit status 126, which looks like a broken script rather than a
+    // working mount option.
+    //
+    // This is the hardening doing exactly what it is supposed to do, to the
+    // build tooling. /home is mounted nodev,nosuid but deliberately NOT noexec
+    // (see harden_linux defaults), so the build account's home works and the
+    // control stays intact. Weakening /tmp to make the tooling happy would be
+    // the wrong way round, and is precisely the compromise this repo argues
+    // against making.
+    remote_folder = "/home/${var.build_username}"
+
+    // Two runs on purpose. The first writes a machine-readable report that is
+    // pulled out of the guest as the compliance artefact; the second prints
+    // human-readable output into the build log and is what actually fails the
+    // build. `set -o pipefail` matters — without it the exit status would be
+    // tee's, and the gate would pass while reporting failures.
+    inline = [
+      "set -euo pipefail",
+      "cd /tmp/goss",
+      "echo '--- goss: machine-readable compliance report ---'",
+      "sudo /usr/local/bin/goss -g /tmp/goss/${var.os_name}.yaml validate --format json --format-options pretty > /tmp/goss-report.json || true",
+      "echo '--- goss: gate ---'",
+      "sudo /usr/local/bin/goss -g /tmp/goss/${var.os_name}.yaml validate --format documentation",
+    ]
+    inline_shebang = "/bin/bash -e"
+  }
+
+  provisioner "file" {
+    // Out of the guest and into the build directory, so the compliance report
+    // survives the VM. Phase 5's catalogue entry references it; phase 7 signs it.
+    direction   = "download"
+    source      = "/tmp/goss-report.json"
+    destination = "${var.output_directory}/goss-${var.os_name}-${var.image_version}.json"
+  }
+
 
   post-processor "manifest" {
     output     = "${var.output_directory}/manifest.json"

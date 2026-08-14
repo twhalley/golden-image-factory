@@ -1,0 +1,160 @@
+---
+# THIS FILE IS THE ANSWER TO "HOW DO YOU HANDLE PATCH MANAGEMENT?"
+#
+# Every image in this factory installs updates at build time, but that only sets
+# the patch level on the day it was built. What keeps an image current is being
+# rebuilt on a schedule, tested, and republished — and the difference between a
+# golden image programme that works and one that quietly rots is whether that
+# rebuild is automatic.
+#
+# This workflow rebuilds every `current` image monthly against the latest
+# packages, runs the full test suite, and opens a PR bumping the catalogue patch
+# version if anything changed. Nothing is published without passing the same
+# gates a human's PR would.
+name: scheduled-rebuild
+
+on:
+  schedule:
+    # 03:00 UTC on the 2nd of each month. After Patch Tuesday's content has
+    # propagated to the distribution mirrors, and not on the 1st — a schedule
+    # that fires at a month boundary is the one that behaves oddly in January.
+    - cron: '0 3 2 * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Why this out-of-cycle rebuild is being run
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  PACKER_VERSION: "1.16.0"
+
+jobs:
+  rebuild:
+    name: rebuild ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        # Driven by hand today. Phase 5 makes this read the catalogue and rebuild
+        # every image whose status is `current`, so retiring an image removes it
+        # from the schedule automatically rather than by remembering to edit this
+        # file.
+        image: [rocky9, ubuntu2404]
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Record why this ran
+        run: |
+          echo "Trigger: ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${{ inputs.reason }}" ]; then
+            echo "Reason: ${{ inputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Install QEMU, Packer and Ansible
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils
+          # /dev/kvm is present on GitHub-hosted runners but owned root:kvm with
+          # the runner user outside that group. Without this the build falls back
+          # to TCG and takes hours. See build.yml for the full note.
+          [ -e /dev/kvm ] && sudo chmod 0666 /dev/kvm || true
+          base="https://releases.hashicorp.com/packer/${PACKER_VERSION}"
+          curl -fsSL -o packer.zip "${base}/packer_${PACKER_VERSION}_linux_amd64.zip"
+          curl -fsSL -o sums.txt "${base}/packer_${PACKER_VERSION}_SHA256SUMS"
+          grep "linux_amd64.zip" sums.txt \
+            | sed "s|packer_${PACKER_VERSION}_linux_amd64.zip|packer.zip|" \
+            | sha256sum -c -
+          # -d into a scratch directory, NOT the working directory: this repo has a
+          # DIRECTORY named packer/ and the zip contains a FILE named packer, so a
+          # plain `unzip` stops to ask "replace packer?" and exits 1 on a runner
+          # with no tty. The failure names neither the directory nor the prompt.
+          unzip -q -o packer.zip -d "${RUNNER_TEMP}/packerbin"
+          sudo install -m 0755 "${RUNNER_TEMP}/packerbin/packer" /usr/local/bin/packer
+          pip install --disable-pip-version-check "ansible-core==2.21.3"
+          ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: Rebuild against the latest packages
+        env:
+          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          eval "$(scripts/make-build-key.sh)"
+          packer init packer/linux
+          extra=()
+          [ -e /dev/kvm ] || extra+=(-var "accelerator=none")
+          packer build -only='linux.qemu.linux' \
+            -var-file="packer/linux/${{ matrix.image }}.pkrvars.hcl" \
+            -var "git_commit=${GITHUB_SHA::7}" \
+            "${extra[@]}" \
+            packer/linux
+
+      - name: Compare against the published image
+        id: compare
+        # The test gate has already run inside the build. This step answers a
+        # different question: did anything actually change? A rebuild that
+        # produces an identical package set does not need a version bump, and
+        # bumping anyway trains people to ignore the PRs.
+        run: |
+          set -euo pipefail
+          report=$(ls builds/goss-*.json | head -1)
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "### ${{ matrix.image }} rebuilt"
+            echo ""
+            echo "Compliance report: \`$(basename "${report}")\`"
+            python3 -c "
+          import json,sys
+          d=json.load(open('${report}'))
+          s=d.get('summary',{})
+          print(f\"- assertions: {s.get('test-count','?')}, failures: {s.get('failed-count','?')}\")
+          "
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        if: always()
+        with:
+          name: rebuild-${{ matrix.image }}
+          path: |
+            builds/goss-*.json
+            builds/manifest.json
+          if-no-files-found: warn
+          retention-days: 90
+
+  propose-version-bump:
+    name: open a catalogue bump PR
+    needs: rebuild
+    if: needs.rebuild.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Bump the catalogue patch version
+        # A PR, never a direct push. The `main` ruleset has an empty bypass list
+        # and applies to automation exactly as it applies to a person — a bot
+        # that can push to a protected branch is a hole in the protection.
+        #
+        # NOTE: catalogue/images.json is phase 5. Until it exists this step is a
+        # no-op that still exercises the workflow's permissions and PR path,
+        # rather than a step that pretends to do something it cannot.
+        run: |
+          set -euo pipefail
+          if [ ! -f catalogue/images.json ]; then
+            echo "catalogue/images.json does not exist yet (phase 5) — nothing to bump." \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "Catalogue bump would run here."

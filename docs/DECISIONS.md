@@ -535,3 +535,220 @@ portfolio repo should demonstrate.
 **Rejected.** Importing the Galaxy role and tuning it — better coverage, but the repo would
 then be demonstrating the ability to set variables. Claiming full CIS Level 1 — untrue, and
 the sort of claim that survives exactly until someone runs a scanner against the image.
+
+---
+
+## ADR-0017 — Windows WinRM teardown and sysprep run as one shutdown command
+
+**Phase:** 3
+**Status:** accepted
+
+**Context.** To reach a freshly installed Windows machine, the build configures WinRM over
+HTTP with Basic authentication and `AllowUnencrypted`. Every one of those settings is a
+serious finding in a published image. They must not survive, and they cannot be removed
+from an Ansible task: Packer's next action after provisioning is `shutdown_command`, and
+that command travels over WinRM. Disabling the transport from a task means sysprep never
+runs, the image is never generalised, and the build fails having done everything else
+correctly.
+
+**Decision.** `harden_windows` stages `C:\Windows\image-finalize.ps1` as its last task, and
+the source's `shutdown_command` invokes it. The script reverses the permissive settings,
+removes the listener and both the custom and built-in firewall rules, disables the service,
+then runs `sysprep /generalize /oobe /shutdown /mode:vm`. It severs its own transport and
+powers off, so nothing needs to outlive its own effects. Same shape as the Linux
+finalisation script ([ADR-0015](#adr-0015)).
+
+**Consequence, stated rather than glossed.** The Pester suite runs in-guest *before* this,
+so it **cannot** assert that WinRM is disabled — at the moment it runs, WinRM is up and
+required. What it asserts instead is the *contract*: that the script exists and contains
+each teardown step. That is weaker than testing the result, and saying so is the point; an
+assertion that silently tested nothing would be worse. The end state is verified against the
+artefact offline.
+
+`/shutdown` and not `/reboot`, deliberately: rebooting runs the specialize pass and undoes
+generalisation, producing an image that is not generalised while appearing to have been
+sysprepped.
+
+**Rejected.** Tearing down WinRM in a task and letting Packer fail — produces no artefact.
+Leaving WinRM enabled and documenting it — the permissive configuration is the single worst
+thing that could ship in this image. A scheduled task that cleans up on first boot — the
+published image still contains the listener, so anyone inspecting the artefact finds it.
+
+---
+
+## ADR-0018 — Windows uses a per-build password because it has no key equivalent
+
+**Phase:** 3
+**Status:** accepted
+
+**Context.** The Linux images authenticate the build with an ephemeral SSH key
+([ADR-0012](#adr-0012)), so no build credential exists in the repository and none outlives
+the build. WinRM has no equivalent: it authenticates with a username and password, and
+`Autounattend.xml` must contain the Administrator password in plaintext for Setup to apply
+it.
+
+**Decision.** Accept the password, and constrain everything around it. It is generated per
+build, supplied only through `PKR_VAR_winrm_password`, never written to the repository, and
+substituted into the answer file at build time via `templatefile()` — the same mechanism the
+kickstart uses for the SSH public key. The variable enforces a 14-character minimum. Sysprep
+disables the built-in Administrator during generalisation, and `policy/packer.rego` denies
+any source that hardcodes `winrm_password` rather than taking it from a variable.
+
+**Consequence.** The Windows image has a weaker build-credential story than the Linux images
+and that asymmetry is a property of the platform, not of the pipeline. Stating it plainly is
+better than implying parity: the answer file genuinely does contain a plaintext password
+while the build runs, and the mitigation is its lifetime and blast radius, not its absence.
+
+**Rejected.** WinRM over HTTPS with a self-signed certificate — moves the trust problem
+rather than solving it, since Packer must then skip certificate validation anyway. A fixed
+password in a `.pkrvars.hcl` — a credential in the repository, which is the thing being
+avoided.
+
+---
+
+## ADR-0019 — Windows is written and validated but NOT built; the reality table says so
+
+**Phase:** 3
+**Status:** accepted, unresolved
+
+**Context.** The Windows Server 2022 templates, `harden_windows` role and Pester suite are
+complete, `packer validate` passes for all three sources, and `ansible-lint` is clean at the
+production profile. **The QEMU build does not complete.** Windows Setup stops at the
+language-selection screen and never applies the answer file, with no error logged in
+`setuperr.log`.
+
+Six build attempts ruled out: the disk bus (QEMU has no `if=sata`), CD versus floppy
+delivery, the missing floppy controller on q35 (real, fixed by moving to i440fx), the file's
+presence and validity on the media (extracted and parsed on the host), XSD element ordering,
+and content before the root element. Full detail in
+[`evidence/windows-autounattend-not-detected-2026-08-14.md`](../evidence/windows-autounattend-not-detected-2026-08-14.md).
+
+**Decision.** Ship the code, mark the image **not executed** in the README reality table, and
+write up what was tried so resuming costs minutes rather than repeating six builds. Do not
+add a `windows2022` job to `build.yml`.
+
+**Consequence.** Phase 3's acceptance criteria are not met and the README says so. The
+strongest temptation here was to describe the templates as "complete" and let the reality
+table's `packer validate` row carry the implication that the image works — a claim nobody
+would immediately check. Passing `validate` means the template is syntactically sound and
+internally consistent. It is not evidence that an image was produced, and this repo's entire
+argument is the difference between those two things.
+
+A permanently failing CI job would be the other wrong answer: a red check that everyone
+learns to ignore is worse than a documented gap.
+
+**Rejected.** Claiming the phase complete on the strength of validation. Deleting the
+Windows work to keep the repo tidy — the brief is explicit that Windows and testing are what
+distinguish this repo, and unfinished-and-documented beats absent.
+
+---
+
+## ADR-0020 — The hardening broke the build tooling, and the tooling moved
+
+**Phase:** 4
+**Status:** accepted
+
+**Context.** With phase 2's controls applied, every shell provisioner after the Ansible run
+started failing:
+
+```
+bash: line 1: /tmp/script_7933.sh: Permission denied
+Script exited with non-zero exit status: 126
+```
+
+Packer's shell provisioner uploads its script to `/tmp` and executes it. `harden_linux`
+mounts `/tmp` with `noexec` (CIS 1.1.2). The control worked exactly as designed and broke
+the tool that applied it.
+
+**Decision.** Set `remote_folder` to the build account's home. `/home` is mounted
+`nodev,nosuid` but deliberately **not** `noexec`, so scripts run there and the `/tmp`
+control stays intact.
+
+**Consequence.** This is the shape of the argument that comes up whenever a hardening
+baseline meets a real system, in miniature: the control is correct, something legitimate
+broke, and there are two ways out. Relaxing `/tmp` to `exec` would have fixed the build in
+one character and quietly removed a control the image standard claims and the goss suite
+asserts. Moving the tooling costs one line and keeps both.
+
+It is also a good answer to "a CIS control breaks the application team's app": find out what
+the control is actually protecting, find out what the application actually needs, and change
+the thing that is cheaper to change — after establishing that it is genuinely cheaper, not
+just closer to hand.
+
+**Rejected.** Mounting `/tmp` without `noexec`. Running provisioners before the hardening —
+would work, and would mean nothing that runs afterwards is ever tested against the hardened
+image, which is the state the test gate exists to verify.
+
+---
+
+## ADR-0021 — The sshd drop-in is named `00-`, not `99-`, and the test suite is why we know
+
+**Phase:** 4
+**Status:** accepted
+
+**Context.** `harden_linux` writes its sshd configuration as a drop-in under
+`/etc/ssh/sshd_config.d/`, originally named `99-cis-hardening.conf` on the usual convention
+that a high number sorts last and therefore wins.
+
+**That convention is backwards for sshd.** OpenSSH takes the **first** value it sees for most
+keywords, and `Include` processes the drop-in directory in lexical order. RHEL 9 ships
+`50-redhat.conf`, which contains `X11Forwarding yes`. A `99-` prefixed file is read *after*
+it and loses — silently. The file exists, its contents are exactly right, a review of the
+repository passes, and X11 forwarding is still enabled on the image.
+
+**Decision.** Rename to `00-cis-hardening.conf` so the hardening is read before any
+distribution drop-in.
+
+**How this was found, which is the point.** Phase 4's goss suite asserts the **effective**
+configuration by parsing `sshd -T` output, not just the contents of the file it wrote. On
+the first run: 138 assertions, 137 passed, and the single failure was
+`x11forwarding no` missing from the effective configuration.
+
+A suite that checked only the file — which is the obvious thing to write, and what the
+`file:` assertions in `shared.yaml` do — would have reported a clean pass on an image where
+the control was not in effect. That is precisely the false pass the test gate exists to
+catch, and it caught it on a control that had been reviewed, committed and built three times
+without anyone noticing.
+
+The same reasoning is why the suite reads `sysctl -n` from the running kernel rather than
+trusting `/etc/sysctl.d/99-cis.conf`, and why the role asserts the `Include` directive
+precedes any conflicting setting before writing the drop-in at all.
+
+**Rejected.** Editing `50-redhat.conf` — it is package-owned and an upgrade replaces it.
+Editing `sshd_config` directly — same problem, and it loses the single-file property that
+makes the hardening readable and removable as a unit.
+
+---
+
+## ADR-0022 — Split goss suites merge by key, and a duplicate key silently deletes assertions
+
+**Phase:** 4
+**Status:** accepted
+
+**Context.** The goss suite is split: `shared.yaml` holds everything true of both
+distributions, and `rocky9.yaml` / `ubuntu2404.yaml` include it and add their own. Both the
+shared file and each OS file originally asserted things about `/etc/image-build-info`.
+
+goss merges included gossfiles **by key**. A second `file:` block for the same path does not
+add to the first — it **replaces** it. The only sign is a warning in the output:
+
+```
+[WARN] Duplicate key detected: 'file: /etc/image-build-info'.
+The value from a later-loaded goss file has overwritten the previous value.
+```
+
+Six assertions from `shared.yaml` — including that the image records `HARDENED=true` and the
+originating git commit — were being silently dropped, on every image, while the suite
+reported a pass.
+
+**Decision.** Per-OS additions that concern a resource already asserted in `shared.yaml` are
+written as `command:` assertions with distinct keys instead. Anything genuinely
+distribution-specific gets its own key; nothing redefines a key from the shared file.
+
+**Consequence.** A test suite that quietly tests less than it appears to is worse than a
+smaller suite, because it is trusted more. Worth carrying into any layered test
+configuration — the same trap exists in Ansible variable precedence and in Kubernetes
+kustomize overlays, and in all three it presents as a passing run rather than an error.
+
+**Rejected.** Ignoring the warning — it is a warning precisely because the tool cannot tell
+whether the override was intended, and here it was not.

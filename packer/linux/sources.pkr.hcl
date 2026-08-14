@@ -95,7 +95,7 @@ source "qemu" "linux" {
   // which case this falls back to TCG software emulation and gets much slower
   // rather than failing — phase 6 measures it and the README states the number
   // instead of implying CI builds are fast.
-  accelerator  = "kvm"
+  accelerator  = var.accelerator
   machine_type = "q35"
   cpus         = var.cpus
   memory       = var.memory
@@ -122,10 +122,15 @@ source "qemu" "linux" {
   shutdown_timeout = "10m"
 
   // -cpu host passes through the physical CPU's features, which roughly halves
-  // install time under KVM. Harmless under TCG, where it is ignored.
-  qemuargs = [
-    ["-cpu", "host"]
-  ]
+  // install time under KVM.
+  //
+  // It is NOT harmless under TCG — it is invalid. "host" means "whatever the
+  // hypervisor exposes", and with no hypervisor QEMU refuses to start at all.
+  // On a GitHub-hosted runner without /dev/kvm that surfaces as
+  // "Error launching VM: Qemu failed to start" with no further detail unless
+  // you re-run with PACKER_LOG=1 — a build failure that looks like a broken
+  // template and is a CPU model.
+  qemuargs = var.accelerator == "none" ? [] : [["-cpu", "host"]]
 }
 
 // ---------------------------------------------------------------------------

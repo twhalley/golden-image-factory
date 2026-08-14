@@ -131,6 +131,30 @@ variable "ssh_timeout" {
 }
 
 // ---------------------------------------------------------------------------
+// Test gate (phase 4)
+//
+// goss is downloaded into the guest and checksum-verified before it runs. A test
+// harness fetched over the network without verification is a hole in exactly the
+// chain of custody the rest of this repo is about.
+//
+// Note the asset name. Much older documentation references a bare
+// `goss-linux-amd64` binary at the release root; for 0.4.10 that URL 404s and
+// the only published asset is goss_<ver>_linux_x86_64.tar.gz. The checksum below
+// is the tarball's, taken from the release's own SHA256SUMS.
+// ---------------------------------------------------------------------------
+
+variable "goss_version" {
+  type    = string
+  default = "0.4.10"
+}
+
+variable "goss_sha256" {
+  type        = string
+  default     = "26e365428946294bcec0c61d867bb3c8349f39feb3d0e6f59084e98632785cc7"
+  description = "SHA-256 of goss_<version>_linux_x86_64.tar.gz, from the release SHA256SUMS."
+}
+
+// ---------------------------------------------------------------------------
 // Output
 // ---------------------------------------------------------------------------
 
@@ -138,6 +162,12 @@ variable "output_directory" {
   type        = string
   default     = "builds"
   description = "Gitignored. Artefacts never enter the repository."
+}
+
+variable "accelerator" {
+  type        = string
+  default     = "kvm"
+  description = "QEMU accelerator. Set to \"none\" on a runner without /dev/kvm — TCG software emulation, roughly an order of magnitude slower but functional."
 }
 
 variable "headless" {

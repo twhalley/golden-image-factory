@@ -8,8 +8,11 @@ The claim this repo exists to prove:
 > Hardened, versioned, tested and attested OS images, produced reproducibly on VMware and
 > in the cloud, with evidence of what is inside them and when they expire.
 
-> **Build status: phases 0, 1 and 2 complete** — Rocky 9 and Ubuntu 24.04 both build and
-> harden end to end. Phase 3 (Windows Server 2022) next. This repo is under active construction and the table below is kept accurate as it goes. Anything not yet built is in
+> **Build status: phases 0, 1, 2, 4 and 6 complete; phase 3 written but not building.**
+> Both Linux images build, harden and pass 140 assertions each **in CI on every PR**.
+> Rocky 9 and Ubuntu 24.04 build, harden and pass their test gates end to end. Windows
+> Server 2022 is written, validated and lint-clean, but Setup does not pick up the answer
+> file on this builder — see [the write-up](evidence/windows-autounattend-not-detected-2026-08-14.md). This repo is under active construction and the table below is kept accurate as it goes. Anything not yet built is in
 > [Roadmap](#roadmap) with a date, not implied by silence. See
 > [Current state](#current-state) for exactly what exists today.
 
@@ -21,10 +24,24 @@ The load-bearing table. Read it before anything else.
 
 | Packer source | Where it runs | Actually executed? |
 |---|---|---|
-| `qemu` | Local QEMU/KVM, and a GitHub Actions runner from phase 6 | **Yes, locally** — hardened [Rocky 9.8, 9m30s](evidence/qemu-rocky9-hardened-2026-08-14.log) and [Ubuntu 24.04.4, 14m27s](evidence/qemu-ubuntu2404-hardened-2026-08-14.log). **Not yet in CI** |
+| `qemu` | GitHub Actions runner, and locally | **Yes — on every PR.** Both Linux images build, harden and pass their test gates in CI: [Rocky 21m14s, Ubuntu 15m18s](https://github.com/twhalley/golden-image-factory/actions). Locally too, with committed logs |
 | `vmware-iso` | VMware Workstation, local machine | **Not yet** — validated only; Workstation not yet installed on the build host |
 | `vsphere-iso` | Nested ESXi 8 + VCSA, 60-day evaluation | **Not yet** — `packer validate` only until phase 9 lands |
 | `azure-arm` | Azure Compute Gallery, free credit | **Not yet** — `packer validate` only; target phase 8 |
+
+CI builds use KVM. GitHub-hosted `ubuntu-24.04` runners do have `/dev/kvm`, but it is
+`root:kvm` and the runner user is outside that group — so the naive check reports "no KVM",
+the build silently drops to TCG software emulation, and fifteen minutes becomes several
+hours with nothing in the log saying why. The capability job distinguishes *absent* from
+*present-but-inaccessible* and grants access in the second case.
+
+Per image:
+
+| Image | Builds | Hardened | Test gate |
+|---|---|---|---|
+| Rocky 9.8 | **yes**, locally on QEMU/KVM | yes | **140 assertions, 0 failures** |
+| Ubuntu 24.04.4 | **yes**, locally on QEMU/KVM | yes | **140 assertions, 0 failures** |
+| Windows Server 2022 | **no** — Setup does not apply the answer file on this builder | role written, lint-clean | Pester suite written, never executed |
 
 No row says "yes" until there is a committed artefact or build log behind it, and the row
 says exactly what was executed and where. `qemu` is built locally today and in CI from
@@ -47,7 +64,8 @@ the same shape. Full reasoning in [ADR-0006](docs/DECISIONS.md#adr-0006).
 
 ## Current state
 
-**Phases 0 (shift-left), 1 (Packer skeleton) and 2 (Ansible hardening): complete.**
+**Phases 0 (shift-left), 1 (Packer skeleton), 2 (Ansible hardening), 4 (test gates) and
+6 (CI/CD): complete. Phase 3 (Windows): written, not building — see the roadmap.**
 
 What exists and works today:
 
@@ -79,11 +97,22 @@ What exists and works today:
   **production** profile. The build account, machine-id, SSH host keys and build traces are
   removed at shutdown by a finalisation script, because the account cannot delete itself
   while Packer is logged in as it ([ADR-0015](docs/DECISIONS.md#adr-0015)).
+- `tests/goss/` — the test gate, run **inside the guest** before shutdown, so it tests the
+  image rather than the template. It asserts the *effective* configuration (`sshd -T`,
+  `sysctl -n`) rather than file contents, which is how it caught a hardening control that
+  had been reviewed, committed and built three times without being in effect
+  ([ADR-0021](docs/DECISIONS.md#adr-0021)).
+- `tests/pester/` — the Windows equivalent. Written; never executed, because phase 3 does
+  not build.
+- `.github/workflows/` — `lint.yml` (fmt, validate across every OS × every source,
+  ansible-lint, tflint, yamllint, PSScriptAnalyzer), `security.yml`, `build.yml` (QEMU
+  matrix + compliance artefact), and **`scheduled-rebuild.yml`**, which is the answer to
+  "how do you handle patch management".
 - `scripts/make-build-key.sh` — ephemeral per-build SSH key, so no build credential exists
   in git and none outlives the build.
 - [`docs/IMAGE-STANDARD.md`](docs/IMAGE-STANDARD.md) — partition layout, packages and the
   rule that decides what goes in the installer versus configuration management.
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — sixteen ADRs.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — twenty-two ADRs.
 - [`evidence/`](evidence/) — the gates tested, with the results that were inconvenient kept
   rather than replaced by ones that pass. Two are worth reading on their own:
   **AWS's canonical example credential pair does not trip gitleaks** (it is allowlisted
@@ -106,17 +135,24 @@ criteria are met and its evidence is committed.
 | 0 | Shift-left gates, repo rulesets, docs skeleton | **done — 2026-08-14** |
 | 1 | Packer skeleton; Rocky 9 kickstart, Ubuntu 24.04 autoinstall; `qemu` build end to end | **done — 2026-08-14** |
 | 2 | `harden_linux` Ansible role, CIS Level 1 subset with a stated applied/not-applied table | **done — 2026-08-14** |
-| 3 | Windows Server 2022 — `Autounattend.xml`, Ansible over WinRM, `harden_windows`, sysprep | next |
-| 4 | goss and Pester gates, in-guest, with machine-readable compliance reports | |
-| 6 | CI: lint, matrix build, monthly scheduled rebuild, releases | |
+| 3 | Windows Server 2022 — `Autounattend.xml`, Ansible over WinRM, `harden_windows`, sysprep | **written, not building** — [4 next steps](evidence/windows-autounattend-not-detected-2026-08-14.md) |
+| 4 | goss and Pester gates, in-guest, with machine-readable compliance reports | **Linux done — 2026-08-14**; Pester written, blocked on phase 3 |
+| 6 | CI: lint, matrix build, monthly scheduled rebuild, releases | **done — 2026-08-14** (releases are phase 7) |
 | 7 | Supply chain — syft SBOM, trivy CVE **diff** gate, cosign keyless, provenance, one OpenVEX triage | after interview |
 | 5 | Image catalogue, lifecycle model, Terraform `image_selector` that refuses expired images | after interview |
 | 8 | Azure Compute Gallery as a second publishing target, OIDC only, native `endOfLifeDate` | after interview |
 | 9 | Nested ESXi + VCSA lab; `vsphere-iso` from validated-only to executed | after interview |
 
-Phases 5, 7, 8 and 9 are designed but unbuilt. Their design is written into the docs
-where it belongs and marked as roadmap; none of it is left sitting in `main` looking
-finished.
+Phases 5, 7, 8 and 9 are designed but unbuilt, and phase 3 is built-but-not-working. None
+of it is left sitting in `main` looking finished:
+
+- **Phase 3** has a [written-up diagnosis](evidence/windows-autounattend-not-detected-2026-08-14.md)
+  with six ruled-out hypotheses and four ranked next steps, so resuming costs minutes
+  rather than repeating the six build attempts.
+- **Phases 5, 7, 8 and 9** exist as design in the docs and as directories in the tree, with
+  no code pretending to implement them. The `terraform/` lint job and the catalogue bump
+  step in `scheduled-rebuild.yml` both no-op with an explicit notice until phase 5 lands,
+  rather than failing or silently passing.
 
 ---
 

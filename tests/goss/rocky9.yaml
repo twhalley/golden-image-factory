@@ -1,0 +1,93 @@
+---
+# goss — Rocky 9 specifics.
+#
+# Included alongside shared.yaml, which carries everything true of both
+# distributions. Only genuine RHEL-family divergence belongs here; anything that
+# could be written once belongs in shared.yaml.
+
+gossfile:
+  shared.yaml: {}
+
+package:
+  # RHEL-family names for the legacy clients CIS 2.3 requires removed. The
+  # Debian names differ, which is the whole reason these two files exist.
+  rsh:
+    installed: false
+  talk:
+    installed: false
+  ypbind:
+    installed: false
+  tftp:
+    installed: false
+
+  # Present, and named differently from Debian.
+  audit:
+    installed: true
+  firewalld:
+    installed: true
+  python3-libselinux:
+    installed: true
+
+service:
+  # `sshd` on RHEL — see the note in shared.yaml.
+  sshd:
+    enabled: true
+    running: true
+  firewalld:
+    enabled: true
+    running: true
+  chronyd:
+    enabled: true
+    running: true
+
+command:
+  # Asserted as a command, NOT as another `file:` block for
+  # /etc/image-build-info. goss merges gossfiles by key, so a second file block
+  # for the same path REPLACES the one in shared.yaml rather than adding to it —
+  # it warns ("Duplicate key detected ... has overwritten the previous value")
+  # and silently drops six assertions. Worth knowing before splitting any suite.
+  image-build-info-records-mac-system:
+    exec: "grep -E '^MAC_SYSTEM=' /etc/image-build-info | cut -d= -f2"
+    exit-status: 0
+    stdout: ["selinux"]
+
+  # SELinux specifically, not the family-agnostic check in shared.yaml. Both are
+  # asserted: shared.yaml proves mandatory access control is enforcing on any
+  # image, this proves the RHEL image uses the mechanism the standard says it
+  # does. An image that quietly swapped SELinux for something else would pass the
+  # first and fail this.
+  selinux-enforcing:
+    exec: "getenforce"
+    exit-status: 0
+    stdout: ["Enforcing"]
+
+  selinux-config-persistent:
+    # getenforce reports the RUNNING state. This asserts the configured state, so
+    # the image does not come up permissive after its first reboot at the
+    # destination.
+    exec: "grep -E '^SELINUX=' /etc/selinux/config | cut -d= -f2"
+    exit-status: 0
+    stdout: ["enforcing"]
+
+  # firewalld's default zone must DROP unmatched inbound traffic. A zone left on
+  # the default target accepts anything not explicitly denied, which inverts the
+  # control.
+  firewalld-default-zone-drops:
+    exec: "firewall-cmd --permanent --zone=public --get-target"
+    exit-status: 0
+    stdout: ["DROP"]
+
+  firewalld-ssh-permitted:
+    # Default deny is only correct if SSH still works — an image nobody can
+    # reach is not a hardened image, it is a brick.
+    exec: "firewall-cmd --permanent --zone=public --list-services"
+    exit-status: 0
+    stdout:
+      - "/ssh/"
+
+  # The filesystem layout uses xfs on Rocky. Asserted because IMAGE-STANDARD.md
+  # states it explicitly as a per-distribution choice rather than an accident.
+  root-filesystem-is-xfs:
+    exec: "findmnt -no FSTYPE /"
+    exit-status: 0
+    stdout: ["xfs"]
