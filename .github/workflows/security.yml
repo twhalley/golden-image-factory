@@ -132,6 +132,15 @@ jobs:
       # A vsphere-iso block nobody builds is exactly the block that rots, so it
       # is validated on every PR against dummy credentials.
       - name: packer init and validate (all four sources)
+        env:
+          # `packer init` resolves plugin versions through the GitHub API, which
+          # is rate limited to 60 requests/hour for anonymous callers — shared
+          # across every job on that runner's egress IP, so it fails
+          # intermittently and confusingly (two of five plugins installed, the
+          # rest 403). The workflow's own token lifts it to the authenticated
+          # limit. Read-only and scoped to this run; the job still declares only
+          # `contents: read`.
+          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # A throwaway key pair, from the same script a developer uses. Packer
