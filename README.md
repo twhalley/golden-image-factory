@@ -9,6 +9,7 @@ The claim this repo exists to prove:
 > in the cloud, with evidence of what is inside them and when they expire.
 
 > **Build status: phases 0, 1, 2, 4 and 6 complete; phase 3 written but not building.**
+> Both Linux images build, harden and pass 140 assertions each **in CI on every PR**.
 > Rocky 9 and Ubuntu 24.04 build, harden and pass their test gates end to end. Windows
 > Server 2022 is written, validated and lint-clean, but Setup does not pick up the answer
 > file on this builder — see [the write-up](evidence/windows-autounattend-not-detected-2026-08-14.md). This repo is under active construction and the table below is kept accurate as it goes. Anything not yet built is in
@@ -23,10 +24,16 @@ The load-bearing table. Read it before anything else.
 
 | Packer source | Where it runs | Actually executed? |
 |---|---|---|
-| `qemu` | Local QEMU/KVM, and a GitHub Actions runner from phase 6 | **Yes, locally** — hardened [Rocky 9.8, 9m30s](evidence/qemu-rocky9-hardened-2026-08-14.log) and [Ubuntu 24.04.4, 14m27s](evidence/qemu-ubuntu2404-hardened-2026-08-14.log). **Not yet in CI** |
+| `qemu` | GitHub Actions runner, and locally | **Yes — on every PR.** Both Linux images build, harden and pass their test gates in CI: [Rocky 21m14s, Ubuntu 15m18s](https://github.com/twhalley/golden-image-factory/actions). Locally too, with committed logs |
 | `vmware-iso` | VMware Workstation, local machine | **Not yet** — validated only; Workstation not yet installed on the build host |
 | `vsphere-iso` | Nested ESXi 8 + VCSA, 60-day evaluation | **Not yet** — `packer validate` only until phase 9 lands |
 | `azure-arm` | Azure Compute Gallery, free credit | **Not yet** — `packer validate` only; target phase 8 |
+
+CI builds use KVM. GitHub-hosted `ubuntu-24.04` runners do have `/dev/kvm`, but it is
+`root:kvm` and the runner user is outside that group — so the naive check reports "no KVM",
+the build silently drops to TCG software emulation, and fifteen minutes becomes several
+hours with nothing in the log saying why. The capability job distinguishes *absent* from
+*present-but-inaccessible* and grants access in the second case.
 
 Per image:
 
