@@ -8,8 +8,8 @@ The claim this repo exists to prove:
 > Hardened, versioned, tested and attested OS images, produced reproducibly on VMware and
 > in the cloud, with evidence of what is inside them and when they expire.
 
-> **Build status: phase 0 of 10 complete.** This repo is under active construction and the
-> table below is kept accurate as it goes. Anything not yet built is in
+> **Build status: phase 1 of 10 in progress** — Rocky 9 builds end to end; Ubuntu 24.04
+> next. This repo is under active construction and the table below is kept accurate as it goes. Anything not yet built is in
 > [Roadmap](#roadmap) with a date, not implied by silence. See
 > [Current state](#current-state) for exactly what exists today.
 
@@ -21,14 +21,20 @@ The load-bearing table. Read it before anything else.
 
 | Packer source | Where it runs | Actually executed? |
 |---|---|---|
-| `qemu` | GitHub Actions runner | **Not yet** — target: every PR, from phase 6 |
-| `vmware-iso` | VMware Workstation, local machine | **Not yet** — target: locally, logs committed to `evidence/` |
+| `qemu` | Local QEMU/KVM, and a GitHub Actions runner from phase 6 | **Yes, locally** — Rocky 9.8, 13m24s, log in [`evidence/`](evidence/qemu-rocky9-2026-08-14.log). **Not yet in CI** |
+| `vmware-iso` | VMware Workstation, local machine | **Not yet** — validated only; Workstation not yet installed on the build host |
 | `vsphere-iso` | Nested ESXi 8 + VCSA, 60-day evaluation | **Not yet** — `packer validate` only until phase 9 lands |
-| `azure-arm` | Azure Compute Gallery, free credit | **Not yet** — target: phase 8 |
+| `azure-arm` | Azure Compute Gallery, free credit | **Not yet** — `packer validate` only; target phase 8 |
 
-No row says "yes" until there is a committed artefact or build log behind it. When a row
-changes, the evidence changes with it. There are no synthesised build logs in this repo
-and there will not be any.
+No row says "yes" until there is a committed artefact or build log behind it, and the row
+says exactly what was executed and where. `qemu` is built locally today and in CI from
+phase 6; those are different claims and the table keeps them apart. There are no
+synthesised build logs in this repo and there will not be any.
+
+All four sources are covered by `packer validate` on every PR, including the two nothing
+builds yet — a source nobody exercises is precisely the one that rots. Getting `azure-arm`
+into that set was not free: the plugin authenticates during `prepare`, so it cannot be
+validated on dummy variables alone ([ADR-0010](docs/DECISIONS.md#adr-0010)).
 
 **Why there is no Azure VMware Solution here.** AVS provisions a minimum of three
 *dedicated bare-metal* nodes charged hourly, and now additionally requires a portable
@@ -41,7 +47,7 @@ the same shape. Full reasoning in [ADR-0006](docs/DECISIONS.md#adr-0006).
 
 ## Current state
 
-**Phase 0 — shift-left foundations: complete.**
+**Phase 0 — shift-left foundations: complete. Phase 1 — Rocky 9 on QEMU: building.**
 
 What exists and works today:
 
@@ -49,8 +55,9 @@ What exists and works today:
   shellcheck, ansible-lint, terraform fmt/tflint, `packer fmt`, and a conventional-commit
   message check. Runs before a commit object exists.
 - `.github/workflows/security.yml` — gitleaks over full history plus working tree, checkov
-  over Terraform/Actions/Ansible, and a Packer formatting job. `permissions: {}` at
-  workflow level with per-job grants. Every action pinned to a full commit SHA.
+  over Terraform/Actions/Ansible, and `packer fmt` + `packer validate` + conftest over the
+  templates. `permissions: {}` at workflow level with per-job grants. Every action pinned to
+  a full commit SHA.
 - `.github/dependabot.yml` — weekly bumps for those SHA-pinned actions, because a pin that
   is never updated is a pin to a known-vulnerable version.
 - `scripts/bootstrap-repo-settings.sh` — re-runnable configuration of secret scanning,
@@ -59,7 +66,17 @@ What exists and works today:
   misses. Including the part most repos leave out: **IaC scanners cover Terraform well and
   Packer HCL barely at all**, so the Packer templates here are not scanned to the standard
   the Terraform is, and the artefact tests in phase 4 are the control worth trusting.
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — eight ADRs.
+- `packer/linux/` — four sources (`qemu`, `vmware-iso`, `vsphere-iso`, `azure-arm`) sharing
+  one templated kickstart, one build block and one manifest. Rocky 9.8 builds unattended on
+  QEMU/KVM in 13m24s; all four validate on every PR.
+- `policy/packer.rego` — the hand-written OPA policy that stands in for the Packer IaC
+  scanning no vendor ships. Five deny rules, each verified to fire against a deliberately
+  bad template.
+- `scripts/make-build-key.sh` — ephemeral per-build SSH key, so no build credential exists
+  in git and none outlives the build.
+- [`docs/IMAGE-STANDARD.md`](docs/IMAGE-STANDARD.md) — partition layout, packages and the
+  rule that decides what goes in the installer versus configuration management.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — thirteen ADRs.
 - [`evidence/`](evidence/) — the gates tested, with the results that were inconvenient kept
   rather than replaced by ones that pass. Two are worth reading on their own:
   **AWS's canonical example credential pair does not trip gitleaks** (it is allowlisted
@@ -80,7 +97,7 @@ criteria are met and its evidence is committed.
 | Phase | Scope | Target |
 |---|---|---|
 | 0 | Shift-left gates, repo rulesets, docs skeleton | **done — 2026-08-14** |
-| 1 | Packer skeleton; Rocky 9 kickstart, Ubuntu 24.04 autoinstall; `qemu` build end to end | |
+| 1 | Packer skeleton; Rocky 9 kickstart, Ubuntu 24.04 autoinstall; `qemu` build end to end | Rocky 9 **done — 2026-08-14**; Ubuntu next |
 | 2 | `harden_linux` Ansible role, CIS Level 1 subset with a stated applied/not-applied table | |
 | 3 | Windows Server 2022 — `Autounattend.xml`, Ansible over WinRM, `harden_windows`, sysprep | |
 | 4 | goss and Pester gates, in-guest, with machine-readable compliance reports | |
@@ -135,7 +152,7 @@ scripts/         repo bootstrap
 |---|---|
 | [`SHIFT-LEFT.md`](docs/SHIFT-LEFT.md) | Every gate, what it catches, what it misses, why it sits where it sits |
 | [`DECISIONS.md`](docs/DECISIONS.md) | ADRs — context, decision, consequence, rejected alternatives |
-| `IMAGE-STANDARD.md` | What a compliant image contains; applied/not-applied controls (phase 2) |
+| [`IMAGE-STANDARD.md`](docs/IMAGE-STANDARD.md) | What a compliant image contains — **partial**: layout and packages now, the applied/not-applied control table is phase 2 |
 | `LIFECYCLE.md` | Versioning, statuses, retirement, consumer obligations (phase 5) |
 | [`THREATMODEL.md`](docs/THREATMODEL.md) | What this pipeline stops and, honestly, what it does not — **partial**, phase 0 source-side gaps only; artefact side is phase 7 |
 | [`RUNBOOK.md`](docs/RUNBOOK.md) | Copy-paste procedures — **partial**: workstation setup and environment traps now; build, patch, roll back and tear down arrive with the phases that create them |
