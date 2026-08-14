@@ -47,17 +47,42 @@ jobs:
         id: check
         run: |
           set -euo pipefail
-          if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+
+          # Three states, not two, and the middle one is the interesting one.
+          #
+          # GitHub-hosted ubuntu-24.04 runners DO have /dev/kvm, but it is
+          # crw-rw---- root:kvm and the runner user is not in the kvm group — so
+          # a plain readable/writable test correctly reports "no KVM" and the
+          # build silently falls back to TCG. That turns a 15-minute build into
+          # a multi-hour one, and nothing in the log says why.
+          #
+          # The device is present, so the access is grantable. The runner is
+          # ephemeral and discarded after the job, which is what makes this
+          # acceptable here and not a pattern to copy onto a persistent host.
+          if [ ! -e /dev/kvm ]; then
+            echo "kvm=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### No /dev/kvm on this runner — TCG software emulation"
+              echo ""
+              echo "Builds run roughly an order of magnitude slower. This is a"
+              echo "property of the runner, not of the templates."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            echo "/dev/kvm present but not accessible; granting access"
+            ls -l /dev/kvm
+            sudo chmod 0666 /dev/kvm || true
+          fi
+
+          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
             echo "kvm=true" >> "$GITHUB_OUTPUT"
             echo "### KVM available — hardware acceleration in use" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "kvm=false" >> "$GITHUB_OUTPUT"
-            {
-              echo "### No KVM on this runner — falling back to TCG software emulation"
-              echo ""
-              echo "Builds will be roughly an order of magnitude slower. This is a"
-              echo "property of the runner, not of the templates."
-            } >> "$GITHUB_STEP_SUMMARY"
+            echo "### /dev/kvm present but unusable — TCG software emulation" \
+              >> "$GITHUB_STEP_SUMMARY"
           fi
           ls -l /dev/kvm 2>&1 || true
 
@@ -82,6 +107,9 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq qemu-system-x86 qemu-utils
+          # Each matrix job gets its own runner, so the access granted in the
+          # capability job does not carry over.
+          [ -e /dev/kvm ] && sudo chmod 0666 /dev/kvm || true
           base="https://releases.hashicorp.com/packer/${PACKER_VERSION}"
           curl -fsSL -o packer.zip "${base}/packer_${PACKER_VERSION}_linux_amd64.zip"
           curl -fsSL -o sums.txt "${base}/packer_${PACKER_VERSION}_SHA256SUMS"
