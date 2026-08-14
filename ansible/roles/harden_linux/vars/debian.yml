@@ -1,0 +1,24 @@
+---
+# Debian-family specifics. See vars/rhel.yml for why these are isolated.
+
+harden_linux_mac_system: apparmor
+harden_linux_firewall_package: ufw
+harden_linux_firewall_service: ufw
+
+harden_linux_audit_package: auditd
+harden_linux_audit_service: auditd
+
+harden_linux_pwquality_conf: /etc/security/pwquality.conf
+harden_linux_faillock_conf: /etc/security/faillock.conf
+
+# Debian has no crypto-policies equivalent; sshd_config is authoritative, which
+# is one fewer place for the setting to be silently overridden.
+harden_linux_crypto_policy: ""
+
+harden_linux_family_packages:
+  - auditd
+  - audispd-plugins
+  - ufw
+  - libpam-pwquality
+
+harden_linux_login_defs: /etc/login.defs

@@ -1,0 +1,64 @@
+---
+# CIS 4.1 — audit.
+#
+# The rules below are a working subset, not the full benchmark. The full CIS
+# audit rule set is long, and a large fraction of it produces volume rather than
+# signal on a server that does nothing but run one application. What is here
+# covers the events that are actually looked at during an incident: privilege
+# changes, authentication, account and group edits, and modification of the audit
+# configuration itself.
+#
+# /var/log/audit is its own filesystem (phase 1) specifically so that the
+# space_left policy below cannot be triggered by an unrelated chatty service.
+
+- name: 4.1.1 | Ensure the audit package is installed
+  ansible.builtin.package:
+    name: "{{ harden_linux_audit_package }}"
+    state: present
+
+- name: 4.1.1 | Ensure auditd is enabled and running
+  ansible.builtin.systemd:
+    name: "{{ harden_linux_audit_service }}"
+    enabled: true
+    state: started
+
+- name: 4.1.2 | Configure audit log retention and disk policy
+  ansible.builtin.lineinfile:
+    path: /etc/audit/auditd.conf
+    regexp: "^#?\\s*{{ item.key }}\\s*="
+    line: "{{ item.key }} = {{ item.value }}"
+    create: false
+  loop:
+    - {key: max_log_file, value: "32"}
+    - {key: num_logs, value: "5"}
+    - {key: max_log_file_action, value: "ROTATE"}
+    - {key: space_left, value: "128"}
+    - {key: space_left_action, value: "SYSLOG"}
+    - {key: admin_space_left, value: "64"}
+    # NOT halt/single. Halting a production host because its audit partition
+    # filled is a denial of service the operator inflicts on themselves, and it
+    # is the CIS setting most often silently reverted. SYSLOG on the warning
+    # threshold and a separate filesystem for /var/log/audit address the same
+    # risk without taking the machine down. Recorded in IMAGE-STANDARD.md.
+    - {key: admin_space_left_action, value: "SYSLOG"}
+    - {key: disk_full_action, value: "SYSLOG"}
+  loop_control:
+    label: "{{ item.key }}"
+  notify: Restart auditd
+
+- name: 4.1.3 | Install audit rules
+  ansible.builtin.template:
+    src: audit-cis.rules.j2
+    dest: /etc/audit/rules.d/99-cis.rules
+    owner: root
+    group: root
+    mode: "0640"
+  notify: Restart auditd
+
+- name: 4.1.4 | Ensure audit log files are not readable by other users
+  ansible.builtin.file:
+    path: /var/log/audit
+    owner: root
+    group: root
+    mode: "0700"
+    state: directory

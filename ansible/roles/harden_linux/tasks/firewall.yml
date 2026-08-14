@@ -1,0 +1,78 @@
+---
+# CIS 3.5 — host firewall, default deny inbound.
+#
+# firewalld on RHEL, ufw on Debian. Both end at the same posture: everything
+# inbound denied except SSH, everything outbound allowed.
+#
+# Outbound is NOT restricted, deliberately. A golden image cannot know what its
+# eventual workload needs to reach, and an image that ships with egress filtering
+# guessed at build time is one whose firewall gets flushed by the first team that
+# deploys it. Egress policy belongs to the deployment. In IMAGE-STANDARD.md as
+# not-applied, with this reason.
+
+- name: 3.5.1 | Ensure the firewall package is installed
+  ansible.builtin.package:
+    name: "{{ harden_linux_firewall_package }}"
+    state: present
+
+# --- RHEL: firewalld --------------------------------------------------------
+- name: 3.5.1 | Ensure firewalld is enabled and running
+  ansible.builtin.systemd:
+    name: firewalld
+    enabled: true
+    state: started
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: 3.5.1 | Set the default zone to drop-by-default with SSH permitted
+  ansible.posix.firewalld:
+    service: ssh
+    state: enabled
+    permanent: true
+    immediate: true
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: 3.5.1 | Ensure the default zone target denies unmatched inbound traffic
+  ansible.builtin.command:
+    cmd: firewall-cmd --permanent --zone=public --set-target=DROP
+  register: harden_linux_fw_target
+  changed_when: "'success' in harden_linux_fw_target.stdout | lower"
+  when: ansible_facts['os_family'] == 'RedHat'
+  notify: Reload firewalld
+
+# --- Debian: ufw ------------------------------------------------------------
+- name: 3.5.1 | Allow SSH before enabling ufw
+  # Order matters and getting it wrong locks Packer out of its own build: enable
+  # first and the default-deny policy drops the live SSH session.
+  community.general.ufw:
+    rule: allow
+    name: OpenSSH
+  when: ansible_facts['os_family'] == 'Debian'
+
+# Written out rather than looped over a list of {direction, policy} pairs.
+# A loop reads more neatly but hands the module a templated `policy`, which
+# argument validation cannot check statically — so a typo like `allowed` would
+# reach the guest instead of failing the lint. Three tasks, three literal
+# values, fully validated.
+- name: 3.5.1 | Deny inbound traffic by default
+  community.general.ufw:
+    direction: incoming
+    policy: deny
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: 3.5.1 | Allow outbound traffic by default
+  # Egress is deliberately unrestricted — see the note at the top of this file.
+  community.general.ufw:
+    direction: outgoing
+    policy: allow
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: 3.5.1 | Deny routed traffic by default
+  community.general.ufw:
+    direction: routed
+    policy: deny
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: 3.5.1 | Enable ufw
+  community.general.ufw:
+    state: enabled
+  when: ansible_facts['os_family'] == 'Debian'

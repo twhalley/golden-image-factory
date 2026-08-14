@@ -1,0 +1,121 @@
+---
+# Image finalisation.
+#
+# THE ORDERING PROBLEM, stated plainly because it is the interesting part:
+# this role must remove the build account, and Packer is logged in as that
+# account. Deleting it here breaks the connection Packer needs to run its own
+# shutdown command, and the build fails after doing everything correctly.
+#
+# So finalisation is split. This file installs a script; the Packer source's
+# shutdown_command runs it as root, which removes the account and powers the
+# machine off in one action that does not need to survive its own effects.
+#
+# The consequence is honest and documented: phase 4's in-guest goss suite runs
+# BEFORE this, so it cannot assert the account is gone — it asserts everything
+# that is true at that point, and the absence of the build account is verified
+# against the artefact offline instead. See ADR-0015 and docs/IMAGE-STANDARD.md.
+
+- name: Install the image finalisation script
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/image-finalize.sh
+    owner: root
+    group: root
+    mode: "0700"
+    content: |
+      #!/usr/bin/env bash
+      # Managed by harden_linux. Invoked by Packer's shutdown_command as root.
+      #
+      # Removes the build account and every trace of the build, then powers off.
+      # Runs as root precisely so that it can delete the account whose session
+      # invoked it.
+      set -uo pipefail
+
+      BUILD_USER='{{ harden_linux_build_username }}'
+
+      # Passwordless sudo for the build account. Goes first: if anything below
+      # fails, the escalation path is already closed.
+      rm -f /etc/sudoers.d/90-packer-build
+
+      # The account itself, its home directory and its mail spool.
+      if id "${BUILD_USER}" >/dev/null 2>&1; then
+        pkill -KILL -u "${BUILD_USER}" 2>/dev/null || true
+        userdel -r -f "${BUILD_USER}" 2>/dev/null || true
+      fi
+
+      # Authorised keys anywhere else on the image. The ephemeral build key
+      # should only ever have been in the build account's home, but an image
+      # that ships a stray authorized_keys is an image with a permanent back
+      # door, so this is checked rather than assumed.
+      find /home /root -name authorized_keys -type f -delete 2>/dev/null || true
+
+      # Shell history, from every account.
+      find /home /root -name '.*history' -type f -delete 2>/dev/null || true
+
+      # Machine identity. A golden image must NOT carry one: cloned VMs sharing
+      # /etc/machine-id get the same DHCP lease and confuse anything keyed on it.
+      # Truncated rather than deleted — systemd regenerates an empty file on
+      # first boot, but a missing file breaks early boot on some configurations.
+      : > /etc/machine-id
+      rm -f /var/lib/dbus/machine-id
+
+      # SSH host keys. Every VM from this image would otherwise present the same
+      # host key, so a man-in-the-middle against one is a man-in-the-middle
+      # against all of them. Both distributions regenerate these on first boot.
+      rm -f /etc/ssh/ssh_host_*
+
+      # Persistent network interface naming rules recorded at build time, which
+      # would misname interfaces on different virtual hardware.
+      rm -f /etc/udev/rules.d/70-persistent-net.rules
+
+      # cloud-init state, so a deployed VM does not replay this build's identity.
+      if command -v cloud-init >/dev/null 2>&1; then
+        cloud-init clean --logs --seed 2>/dev/null || true
+      fi
+
+      # Package manager caches and build logs.
+      if command -v dnf >/dev/null 2>&1; then
+        dnf clean all >/dev/null 2>&1 || true
+        rm -rf /var/cache/dnf/*
+      fi
+      if command -v apt-get >/dev/null 2>&1; then
+        apt-get clean >/dev/null 2>&1 || true
+        rm -rf /var/lib/apt/lists/*
+      fi
+
+      # Logs written during the build. Truncated rather than deleted so that
+      # ownership, permissions and any SELinux context survive.
+      find /var/log -type f -exec truncate -s 0 {} \; 2>/dev/null || true
+      rm -f /root/ks-post.log
+
+      # Free the unused blocks so the sparse artefact is not carrying deleted
+      # data. Best-effort: fstrim needs discard support the builder may not have.
+      fstrim -av >/dev/null 2>&1 || true
+
+      sync
+      exec /sbin/shutdown -P now
+  when: harden_linux_install_finalize_script
+
+- name: Record that the image was hardened, and by what
+  # Appended to the same file the installer wrote in phase 1, so one file answers
+  # both "what built this" and "what was applied to it". Phase 5's catalogue and
+  # phase 4's goss suite both read it.
+  ansible.builtin.blockinfile:
+    path: /etc/image-build-info
+    create: false
+    marker: "# {mark} harden_linux"
+    block: |
+      HARDENED=true
+      HARDENING_ROLE=harden_linux
+      HARDENING_BASELINE=CIS Distribution Independent Linux v2.0.0 (selected subset)
+      HARDENING_DATE={{ ansible_facts['date_time'].iso8601 }}
+      MAC_SYSTEM={{ harden_linux_mac_system }}
+  # The file is 0444 from the kickstart, so it has to be writable for this one
+  # append and then put back.
+  become: true
+
+- name: Restore the immutable-ish permissions on the build info file
+  ansible.builtin.file:
+    path: /etc/image-build-info
+    owner: root
+    group: root
+    mode: "0444"

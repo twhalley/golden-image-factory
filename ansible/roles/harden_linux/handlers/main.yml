@@ -1,0 +1,33 @@
+---
+- name: Restart sshd
+  # The config is validated with `sshd -t` before it is written, so this should
+  # never break the connection Ansible is using. `reloaded` rather than
+  # `restarted` keeps the current session alive either way.
+  ansible.builtin.systemd:
+    name: "{{ 'sshd' if ansible_facts['os_family'] == 'RedHat' else 'ssh' }}"
+    state: reloaded
+
+- name: Restart auditd
+  # auditd refuses `systemctl restart` on both distributions — it is protected by
+  # RefuseManualStop. `service auditd restart` uses the init script that knows how
+  # to do it, and augenrules reloads the rules without touching the daemon.
+  ansible.builtin.command:
+    cmd: augenrules --load
+  register: harden_linux_augenrules
+  changed_when: harden_linux_augenrules.rc == 0
+  failed_when: harden_linux_augenrules.rc not in [0, 1]
+
+- name: Reload firewalld
+  ansible.builtin.command:
+    cmd: firewall-cmd --reload
+  register: harden_linux_fw_reload
+  changed_when: "'success' in harden_linux_fw_reload.stdout | lower"
+
+- name: Rebuild initramfs
+  # Module blacklists in /etc/modprobe.d are baked into the initramfs, so a
+  # blacklist added without regenerating it is not in effect for anything loaded
+  # early in boot.
+  ansible.builtin.command:
+    cmd: "{{ 'dracut -f' if ansible_facts['os_family'] == 'RedHat' else 'update-initramfs -u' }}"
+  register: harden_linux_initramfs
+  changed_when: harden_linux_initramfs.rc == 0

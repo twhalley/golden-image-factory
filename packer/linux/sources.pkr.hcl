@@ -21,9 +21,19 @@ locals {
 
   artefact_name = "${var.os_name}-${var.image_version}"
 
-  // Reused by every source. sudo -S reads the (absent) password from stdin and
-  // exits rather than hanging on a TTY prompt if NOPASSWD is ever removed early.
-  shutdown_command = "echo '' | sudo -S /sbin/shutdown -P now"
+  // Finalisation and shutdown in one action, run as root.
+  //
+  // This is not a stylistic choice. harden_linux must remove the build account,
+  // and Packer is logged in AS that account — deleting it from a provisioner
+  // breaks the connection Packer needs to shut the machine down, failing a build
+  // that did everything right. The script runs as root via sudo, removes the
+  // account, wipes machine-id, SSH host keys and build traces, then powers off,
+  // so nothing needs to survive its own effects. See ADR-0015.
+  //
+  // Falls back to a plain shutdown if the script is absent, so a build with the
+  // Ansible provisioner disabled still terminates instead of hanging for the
+  // full shutdown_timeout.
+  shutdown_command = "echo '' | sudo -S bash -c 'if [ -x /usr/local/sbin/image-finalize.sh ]; then exec /usr/local/sbin/image-finalize.sh; else exec /sbin/shutdown -P now; fi'"
 
   // Per-builder differences are exactly two things: the disk the installer
   // writes to, and the guest agent matching the hypervisor.

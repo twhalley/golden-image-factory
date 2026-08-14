@@ -1,0 +1,98 @@
+## Managed by harden_linux. Do not edit by hand.
+## CIS Distribution Independent Linux Benchmark v2.0.0, section 4.1.
+##
+## A working subset, not the full benchmark. See tasks/auditd.yml for why, and
+## docs/IMAGE-STANDARD.md for the controls deliberately not applied.
+
+## Reset any rules already loaded, so this file is authoritative and reloading is
+## idempotent.
+-D
+
+## Buffer size. 8192 is the CIS suggestion; a busy host needs more, and the
+## symptom of too small a buffer is silently lost events.
+-b 8192
+
+## What to do if the kernel cannot keep up. 1 = printk a warning.
+## Not 2 (panic): losing audit events is bad, panicking a production host because
+## of it is worse.
+-f 1
+
+## --- Time --------------------------------------------------------------------
+## 4.1.3 — changes to the system clock invalidate the timeline of every other
+## event, which is why this is first.
+-a always,exit -F arch=b64 -S adjtimex,settimeofday,clock_settime -k time-change
+-a always,exit -F arch=b32 -S adjtimex,settimeofday,clock_settime -k time-change
+-w /etc/localtime -p wa -k time-change
+
+## --- Identity ----------------------------------------------------------------
+## 4.1.4 — account, group, password and sudoers changes.
+-w /etc/group -p wa -k identity
+-w /etc/passwd -p wa -k identity
+-w /etc/gshadow -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/security/opasswd -p wa -k identity
+-w /etc/sudoers -p wa -k identity
+-w /etc/sudoers.d/ -p wa -k identity
+
+## --- Network -----------------------------------------------------------------
+## 4.1.5 — hostname/domain changes and edits to network configuration.
+-a always,exit -F arch=b64 -S sethostname,setdomainname -k system-locale
+-a always,exit -F arch=b32 -S sethostname,setdomainname -k system-locale
+-w /etc/hosts -p wa -k system-locale
+-w /etc/hostname -p wa -k system-locale
+
+## --- Mandatory access control ------------------------------------------------
+## 4.1.6 — changes to the MAC policy. Both paths are listed because this rule set
+## is shared by Rocky (SELinux) and Ubuntu (AppArmor); a path that does not exist
+## on a given host is simply not watched, which is harmless.
+-w /etc/selinux/ -p wa -k MAC-policy
+-w /usr/share/selinux/ -p wa -k MAC-policy
+-w /etc/apparmor/ -p wa -k MAC-policy
+-w /etc/apparmor.d/ -p wa -k MAC-policy
+
+## --- Authentication ----------------------------------------------------------
+## 4.1.7 — login, logout and session records.
+-w /var/log/lastlog -p wa -k logins
+-w /var/run/faillock -p wa -k logins
+-w /var/log/wtmp -p wa -k session
+-w /var/log/btmp -p wa -k session
+-w /var/run/utmp -p wa -k session
+
+## --- Permission and ownership changes ----------------------------------------
+## 4.1.9 — chmod/chown and the extended-attribute equivalents, restricted to
+## unprivileged users so that routine root activity does not drown the log.
+-a always,exit -F arch=b64 -S chmod,fchmod,fchmodat,chown,fchown,fchownat,lchown -F auid>=1000 -F auid!=4294967295 -k perm_mod
+-a always,exit -F arch=b32 -S chmod,fchmod,fchmodat,chown,fchown,fchownat,lchown -F auid>=1000 -F auid!=4294967295 -k perm_mod
+-a always,exit -F arch=b64 -S setxattr,lsetxattr,fsetxattr,removexattr,lremovexattr,fremovexattr -F auid>=1000 -F auid!=4294967295 -k perm_mod
+-a always,exit -F arch=b32 -S setxattr,lsetxattr,fsetxattr,removexattr,lremovexattr,fremovexattr -F auid>=1000 -F auid!=4294967295 -k perm_mod
+
+## --- Privilege escalation ----------------------------------------------------
+## 4.1.15 — use of sudo and su, and the sudo log itself.
+-w /usr/bin/sudo -p x -k privileged
+-w /usr/bin/su -p x -k privileged
+-w /var/log/sudo.log -p wa -k actions
+
+## --- Modules -----------------------------------------------------------------
+## 4.1.16 — kernel module loading and unloading.
+-w /sbin/insmod -p x -k modules
+-w /sbin/rmmod -p x -k modules
+-w /sbin/modprobe -p x -k modules
+-a always,exit -F arch=b64 -S init_module,delete_module,finit_module -k modules
+
+## --- Mounts ------------------------------------------------------------------
+-a always,exit -F arch=b64 -S mount -F auid>=1000 -F auid!=4294967295 -k mounts
+-a always,exit -F arch=b32 -S mount -F auid>=1000 -F auid!=4294967295 -k mounts
+
+## --- Make the configuration immutable ----------------------------------------
+## 4.1.17 — `-e 2` locks the rules until reboot, so an attacker who gains root
+## cannot quietly disable auditing without a reboot that is itself conspicuous.
+##
+## Deliberately LAST: everything after it is ignored.
+##
+## Deliberately NOT enabled in this image. `-e 2` means audit rules cannot be
+## changed without rebooting, which breaks legitimate post-deployment
+## configuration management on a golden image intended to be a starting point.
+## It belongs at deployment time, applied by the consuming team once the rule set
+## for that workload is settled. Recorded in docs/IMAGE-STANDARD.md as
+## not-applied with this reason.
+# -e 2

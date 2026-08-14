@@ -1,0 +1,145 @@
+---
+# harden_linux — tunable defaults.
+#
+# Everything here is deliberately overridable. A hardening role that cannot be
+# tuned gets forked by the first team whose application it breaks, and a forked
+# role stops receiving fixes. See docs/IMAGE-STANDARD.md for which CIS controls
+# are applied, which are not, and why.
+
+# --- Build account removal --------------------------------------------------
+# The account Packer connects as. It cannot be deleted while Packer is still
+# using it, so removal happens in the shutdown command via the finalize script
+# this role installs. See ADR-0015.
+harden_linux_build_username: packer
+harden_linux_install_finalize_script: true
+
+# --- SSH --------------------------------------------------------------------
+harden_linux_sshd_permit_root_login: "no"
+harden_linux_sshd_password_authentication: "no"
+harden_linux_sshd_max_auth_tries: 4
+harden_linux_sshd_login_grace_time: 60
+harden_linux_sshd_client_alive_interval: 300
+harden_linux_sshd_client_alive_count_max: 3
+harden_linux_sshd_max_sessions: 10
+harden_linux_sshd_x11_forwarding: "no"
+harden_linux_sshd_allow_tcp_forwarding: "no"
+
+# Modern algorithms only. Named explicitly rather than left to the distribution
+# default, because the two distributions ship different defaults and an image
+# standard that says "whatever the vendor picked" is not a standard.
+harden_linux_sshd_kex_algorithms: >-
+  curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512
+harden_linux_sshd_ciphers: >-
+  chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr
+harden_linux_sshd_macs: >-
+  hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com
+
+# --- Password and lockout policy --------------------------------------------
+harden_linux_password_max_days: 365
+harden_linux_password_min_days: 1
+harden_linux_password_warn_age: 7
+harden_linux_pwquality_minlen: 14
+harden_linux_pwquality_dcredit: -1
+harden_linux_pwquality_ucredit: -1
+harden_linux_pwquality_ocredit: -1
+harden_linux_pwquality_lcredit: -1
+harden_linux_faillock_deny: 5
+harden_linux_faillock_unlock_time: 900
+
+# umask 027, not 077. 077 breaks any workload expecting group-readable files and
+# is the single most common cause of a hardening role being switched off wholesale.
+harden_linux_umask: "027"
+
+# --- Kernel modules ---------------------------------------------------------
+# Filesystems with no place on a server image. usb-storage is included: a golden
+# image for a hypervisor or cloud has no reason to mount USB mass storage, and it
+# is a documented data-exfiltration path.
+harden_linux_disabled_filesystems:
+  - cramfs
+  - freevxfs
+  - jffs2
+  - hfs
+  - hfsplus
+  - squashfs
+  - udf
+  - usb-storage
+
+# --- Mount options ----------------------------------------------------------
+# The filesystems the installer created separately (phase 1) exist precisely so
+# these can be applied. See ADR-0011 for why this is here and not in the
+# kickstart.
+harden_linux_mount_options:
+  /tmp: "defaults,nodev,nosuid,noexec"
+  /var/tmp: "defaults,nodev,nosuid,noexec"
+  /home: "defaults,nodev,nosuid"
+  /var/log: "defaults,nodev,nosuid,noexec"
+  /var/log/audit: "defaults,nodev,nosuid,noexec"
+  /dev/shm: "defaults,nodev,nosuid,noexec"
+
+# --- sysctl -----------------------------------------------------------------
+harden_linux_sysctl:
+  # Network — do not act as a router, ignore redirects, log martians.
+  net.ipv4.ip_forward: 0
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.default.send_redirects: 0
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.default.accept_source_route: 0
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.secure_redirects: 0
+  net.ipv4.conf.default.secure_redirects: 0
+  net.ipv4.conf.all.log_martians: 1
+  net.ipv4.conf.default.log_martians: 1
+  net.ipv4.icmp_echo_ignore_broadcasts: 1
+  net.ipv4.icmp_ignore_bogus_error_responses: 1
+  net.ipv4.conf.all.rp_filter: 1
+  net.ipv4.conf.default.rp_filter: 1
+  net.ipv4.tcp_syncookies: 1
+  net.ipv6.conf.all.accept_ra: 0
+  net.ipv6.conf.default.accept_ra: 0
+  net.ipv6.conf.all.accept_redirects: 0
+  net.ipv6.conf.default.accept_redirects: 0
+  # Memory and process
+  kernel.randomize_va_space: 2
+  kernel.yama.ptrace_scope: 1
+  fs.suid_dumpable: 0
+  kernel.kptr_restrict: 2
+  kernel.dmesg_restrict: 1
+
+# --- Banner -----------------------------------------------------------------
+# Deliberately generic. A banner naming the organisation, the hostname or the OS
+# version tells an unauthenticated attacker something useful, which is the
+# opposite of the intent.
+harden_linux_banner: |
+  +---------------------------------------------------------------------+
+  |                    AUTHORISED ACCESS ONLY                           |
+  |                                                                     |
+  |  This system is restricted to authorised users for legitimate       |
+  |  business purposes. Unauthorised access is prohibited and may be    |
+  |  subject to legal action. All activity is logged and monitored.     |
+  |                                                                     |
+  |  Disconnect immediately if you are not an authorised user.          |
+  +---------------------------------------------------------------------+
+
+# --- Services ---------------------------------------------------------------
+# Removed rather than merely stopped: a package that is not installed cannot be
+# started by a well-meaning administrator or a dependency.
+harden_linux_remove_packages:
+  - telnet
+  - rsh-client
+  - talk
+  - ypbind
+  - tftp
+
+# System accounts to force to a nologin shell. Empty by default and that is
+# deliberate: both distributions already ship their system accounts with nologin,
+# and a blanket "every account below UID 1000" sweep is exactly how a build
+# breaks an account some service legitimately needs a shell for. Populate it with
+# named accounts when a specific one is found wanting.
+harden_linux_nologin_accounts: []
+
+harden_linux_disable_services:
+  - avahi-daemon
+  - cups
+  - rpcbind
+  - nfs-server

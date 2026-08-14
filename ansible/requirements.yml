@@ -1,0 +1,17 @@
+---
+# Pinned, for the same reason everything else in this repo is pinned: a collection
+# that floats makes a build non-reproducible in a way that only surfaces months
+# later, when the image that "has not changed" behaves differently. Versions
+# resolved 2026-08-14; bump deliberately.
+collections:
+  - name: ansible.posix
+    version: "2.2.2"
+  - name: community.general
+    version: "13.3.0"
+
+  # Windows, phase 3. Listed here rather than in a second file so there is one
+  # answer to "what does this repo depend on".
+  - name: ansible.windows
+    version: "3.7.0"
+  - name: community.windows
+    version: "3.3.0"

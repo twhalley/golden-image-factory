@@ -1,0 +1,40 @@
+---
+# CIS 3.1 – 3.3 — kernel network and memory parameters.
+#
+# Written to a single drop-in under /etc/sysctl.d/ so the whole set can be read,
+# diffed and removed as a unit, and so an upgrade replacing /etc/sysctl.conf does
+# not revert it.
+
+- name: 3.x | Apply kernel parameters
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-cis.conf
+    sysctl_set: true
+    reload: true
+  loop: "{{ harden_linux_sysctl | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} = {{ item.value }}"
+  # A parameter the running kernel does not expose (an IPv6 knob on a kernel
+  # built without IPv6, for instance) must not fail the build — but it must be
+  # visible, hence the register and the report below rather than a silent skip.
+  register: harden_linux_sysctl_result
+  failed_when: false
+
+- name: 3.x | Report kernel parameters that could not be applied
+  ansible.builtin.debug:
+    msg: >-
+      sysctl {{ item.item.key }} could not be set on this kernel:
+      {{ item.msg | default('unknown error') }}
+  loop: "{{ harden_linux_sysctl_result.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  when: item.failed | default(false)
+
+- name: 3.x | Ensure the sysctl drop-in is not world writable
+  ansible.builtin.file:
+    path: /etc/sysctl.d/99-cis.conf
+    owner: root
+    group: root
+    mode: "0644"

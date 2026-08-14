@@ -1,0 +1,97 @@
+---
+# CIS 5.2 — SSH server configuration.
+#
+# Written as a drop-in under /etc/ssh/sshd_config.d/ rather than by editing
+# sshd_config. Both distributions ship an Include directive at the top of the
+# main file, and a drop-in survives a package upgrade replacing sshd_config —
+# which an in-place edit does not. It also makes the hardening a single file that
+# can be read, diffed and removed as a unit.
+#
+# Ordering caveat that is easy to get wrong: OpenSSH takes the FIRST value seen
+# for most keywords, so a drop-in only wins if it is included before the
+# conflicting setting. Both distributions place the Include at the top for
+# exactly this reason, but it is verified below rather than assumed.
+
+- name: 5.2 | Verify sshd_config includes the drop-in directory before any setting
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      include_line=$(grep -n '^[[:space:]]*Include[[:space:]]' /etc/ssh/sshd_config | head -1 | cut -d: -f1)
+      first_setting=$(grep -nE '^[[:space:]]*[A-Za-z]' /etc/ssh/sshd_config \
+        | grep -v ':[[:space:]]*Include' | head -1 | cut -d: -f1)
+      if [ -z "$include_line" ]; then echo "NO_INCLUDE"; exit 0; fi
+      if [ -z "$first_setting" ] || [ "$include_line" -lt "$first_setting" ]; then echo "OK"; else echo "TOO_LATE"; fi
+    executable: /bin/bash
+  register: harden_linux_sshd_include_check
+  changed_when: false
+  check_mode: false
+
+- name: 5.2 | Fail if the drop-in would be overridden
+  # Writing a drop-in that silently loses to the main config is worse than not
+  # writing one: the file exists, the review passes, and the setting is not in
+  # effect. OpenSSH takes the first value seen for most keywords.
+  ansible.builtin.assert:
+    that:
+      - harden_linux_sshd_include_check.stdout == 'OK'
+    fail_msg: >-
+      /etc/ssh/sshd_config does not Include the drop-in directory before its own
+      settings ({{ harden_linux_sshd_include_check.stdout }}). A drop-in written
+      here would be silently overridden.
+
+- name: 5.2.1 | Ensure the sshd drop-in directory exists with correct permissions
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: 5.2.x | Write the hardened sshd configuration
+  ansible.builtin.template:
+    src: sshd_hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/99-cis-hardening.conf
+    owner: root
+    group: root
+    mode: "0600"
+    # Never install a config that would stop sshd starting — that is an image
+    # nobody can log into, discovered after publication.
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Restart sshd
+
+- name: 5.2.1 | Ensure permissions on /etc/ssh/sshd_config are 0600
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: 5.2.2 | Locate SSH host private keys
+  ansible.builtin.find:
+    paths: /etc/ssh
+    patterns: "ssh_host_*_key"
+    file_type: file
+  register: harden_linux_ssh_host_keys
+
+- name: 5.2.3 | Locate SSH host public keys
+  ansible.builtin.find:
+    paths: /etc/ssh
+    patterns: "ssh_host_*_key.pub"
+    file_type: file
+  register: harden_linux_ssh_host_pubkeys
+
+- name: 5.2.2 | Ensure SSH host private keys are not world or group readable
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: root
+    mode: "0600"
+  loop: "{{ harden_linux_ssh_host_keys.files | map(attribute='path') | list }}"
+  when: harden_linux_ssh_host_keys.matched | int > 0
+
+- name: 5.2.3 | Ensure SSH host public keys are 0644
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ harden_linux_ssh_host_pubkeys.files | map(attribute='path') | list }}"
+  when: harden_linux_ssh_host_pubkeys.matched | int > 0

@@ -44,8 +44,30 @@ build {
     inline_shebang = "/bin/bash -e"
   }
 
-  // Ansible hardening is phase 2. Deliberately absent rather than stubbed:
-  // an empty provisioner block that looks like hardening is worse than none.
+  // Phase 2 — hardening. One playbook and one role for every target, including
+  // azure-arm, which has no installer file of its own and therefore gets its
+  // entire configuration from here (ADR-0011).
+  provisioner "ansible" {
+    playbook_file = "${path.root}/../../ansible/playbooks/linux-harden.yml"
+    galaxy_file   = "${path.root}/../../ansible/requirements.yml"
+
+    // Ansible defaults to checking host keys against a known_hosts file that
+    // cannot possibly contain a VM created ninety seconds ago.
+    ansible_env_vars = [
+      "ANSIBLE_HOST_KEY_CHECKING=False",
+      "ANSIBLE_NOCOLOR=True",
+      "ANSIBLE_CONFIG=${path.root}/../../ansible/ansible.cfg",
+      "ANSIBLE_FORCE_COLOR=0",
+    ]
+
+    extra_arguments = [
+      "--extra-vars", "harden_linux_build_username=${var.build_username}",
+    ]
+  }
+
+  // Phase 4's goss suite runs here, before finalisation removes the build
+  // account. Deliberately absent until phase 2 is proven — a stub that looks
+  // like a test gate is worse than none.
 
   post-processor "manifest" {
     output     = "${var.output_directory}/manifest.json"

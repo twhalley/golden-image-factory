@@ -1,0 +1,84 @@
+---
+# harden_linux — a selected subset of CIS Level 1, applied identically to
+# Rocky 9 and Ubuntu 24.04.
+#
+# Every task name carries its CIS reference so a reviewer can map the code to the
+# benchmark without reading the docs first. Where a control is deliberately NOT
+# applied, it is listed in docs/IMAGE-STANDARD.md with the reason — that table is
+# the substantive half of this role.
+#
+# Section numbers are CIS Distribution Independent Linux Benchmark v2.0.0 unless
+# a task says otherwise. Rocky and Ubuntu have their own benchmarks whose numbers
+# differ; the distribution-independent numbering is used precisely because this
+# role targets both, and pretending one benchmark's numbering covers the other
+# would be worse than using neither.
+
+- name: Load family-specific variables
+  ansible.builtin.include_vars:
+    file: "{{ 'rhel.yml' if ansible_facts['os_family'] == 'RedHat' else 'debian.yml' }}"
+  tags: [always]
+
+- name: Assert this role supports the target
+  # Fail loudly rather than half-hardening an unrecognised distribution and
+  # leaving an image that claims compliance it does not have.
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['RedHat', 'Debian']
+    fail_msg: >-
+      harden_linux supports RedHat and Debian families only; found
+      '{{ ansible_facts['os_family'] }}'. Add a vars file and verify every control before
+      claiming this image is hardened.
+  tags: [always]
+
+- name: Install packages required by the hardening controls
+  ansible.builtin.package:
+    name: "{{ harden_linux_family_packages }}"
+    state: present
+  tags: [packages]
+
+- name: Apply filesystem and kernel module controls
+  ansible.builtin.import_tasks: kernel_modules.yml
+  tags: [cis_1, kernel]
+
+- name: Apply mount options
+  ansible.builtin.import_tasks: mounts.yml
+  tags: [cis_1, mounts]
+
+- name: Apply banner and MOTD controls
+  ansible.builtin.import_tasks: banner.yml
+  tags: [cis_1, banner]
+
+- name: Apply service and package removal controls
+  ansible.builtin.import_tasks: services.yml
+  tags: [cis_2, services]
+
+- name: Apply host firewall controls
+  ansible.builtin.import_tasks: firewall.yml
+  tags: [cis_3, firewall]
+
+- name: Apply kernel network parameters
+  ansible.builtin.import_tasks: sysctl.yml
+  tags: [cis_3, sysctl]
+
+- name: Apply audit controls
+  ansible.builtin.import_tasks: auditd.yml
+  tags: [cis_4, audit]
+
+- name: Apply SSH server controls
+  ansible.builtin.import_tasks: ssh.yml
+  tags: [cis_5, ssh]
+
+- name: Apply account, password and lockout policy
+  ansible.builtin.import_tasks: accounts.yml
+  tags: [cis_5, accounts]
+
+- name: Apply cron and at permissions
+  ansible.builtin.import_tasks: cron.yml
+  tags: [cis_5, cron]
+
+# Last, and it must stay last: this installs the script that removes the build
+# account itself. See ADR-0015 for why removal happens at shutdown rather than
+# here.
+- name: Install image finalisation
+  ansible.builtin.import_tasks: finalize.yml
+  tags: [finalize]

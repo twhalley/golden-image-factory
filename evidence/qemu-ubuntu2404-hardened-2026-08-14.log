@@ -1,0 +1,415 @@
+# Real build log — qemu / ubuntu2404 / 2026-08-14 (phase 2: hardened)
+#
+# packer build -only='linux.qemu.linux' -var-file=packer/linux/ubuntu2404.pkrvars.hcl \
+#   -var iso_url=<local path to verified ISO> -var git_commit=0ae9e79 packer/linux
+#
+# Sanitised: ANSIBLE colour stripped, home paths replaced with ~.
+# Result: SUCCESS in 14m27s. Ansible: ok=62 changed=31 failed=0.
+
+linux.qemu.linux: output will be in this color.
+
+==> linux.qemu.linux: Retrieving ISO
+==> linux.qemu.linux: Trying ~/.cache/golden-image-factory/isos/ubuntu-24.04.4-live-server-amd64.iso
+==> linux.qemu.linux: Trying ~/.cache/golden-image-factory/isos/ubuntu-24.04.4-live-server-amd64.iso?checksum=sha256%3Ae907d92eeec9df64163a7e454cbc8d7755e8ddc7ed42f99dbc80c40f1a138433
+==> linux.qemu.linux: ~/.cache/golden-image-factory/isos/ubuntu-24.04.4-live-server-amd64.iso?checksum=sha256%3Ae907d92eeec9df64163a7e454cbc8d7755e8ddc7ed42f99dbc80c40f1a138433 => ~/.cache/golden-image-factory/isos/ubuntu-24.04.4-live-server-amd64.iso
+==> linux.qemu.linux: Starting HTTP server on port 8568
+==> linux.qemu.linux: Found port for communicator (SSH, WinRM, etc): 2416.
+==> linux.qemu.linux: Using existing SSH private key
+==> linux.qemu.linux: Looking for available port between 5900 and 6000 on 127.0.0.1
+==> linux.qemu.linux: Starting VM, booting from CD-ROM
+==> linux.qemu.linux: The VM will be run headless, without a GUI. If you want to
+==> linux.qemu.linux: view the screen of the VM, connect via VNC without a password to
+==> linux.qemu.linux: vnc://127.0.0.1:5974
+==> linux.qemu.linux: Overriding default Qemu arguments with qemuargs template option...
+==> linux.qemu.linux: Waiting 5s for boot...
+==> linux.qemu.linux: Connecting to VM via VNC (127.0.0.1:5974)
+==> linux.qemu.linux: Typing the boot commands over VNC...
+==> linux.qemu.linux: Not using a NetBridge -- skipping StepWaitGuestAddress
+==> linux.qemu.linux: Using SSH communicator to connect: 127.0.0.1
+==> linux.qemu.linux: Waiting for SSH to become available...
+==> linux.qemu.linux: Connected to SSH!
+==> linux.qemu.linux: Provisioning with shell script: /tmp/packer-shell3050513249
+==> linux.qemu.linux: --- image build info ---
+==> linux.qemu.linux: IMAGE_NAME=ubuntu2404
+==> linux.qemu.linux: IMAGE_VERSION=0.1.0
+==> linux.qemu.linux: GIT_COMMIT=0ae9e79
+==> linux.qemu.linux: SOURCE_ISO_CHECKSUM=sha256:e907d92eeec9df64163a7e454cbc8d7755e8ddc7ed42f99dbc80c40f1a138433
+==> linux.qemu.linux: BUILD_DATE=2026-08-14T11:45:47Z
+==> linux.qemu.linux: BUILDER=qemu
+==> linux.qemu.linux: --- filesystem layout ---
+==> linux.qemu.linux: TARGET               SOURCE                        FSTYPE OPTIONS
+==> linux.qemu.linux: /                    /dev/mapper/vg_root-lv_root   ext4   rw,relatime
+==> linux.qemu.linux: ├─/tmp               /dev/mapper/vg_root-lv_tmp    ext4   rw,relatime
+==> linux.qemu.linux: ├─/var               /dev/mapper/vg_root-lv_var    ext4   rw,relatime
+==> linux.qemu.linux: │ ├─/var/tmp         /dev/mapper/vg_root-lv_vartmp ext4   rw,relatime
+==> linux.qemu.linux: │ └─/var/log         /dev/mapper/vg_root-lv_log    ext4   rw,relatime
+==> linux.qemu.linux: │   └─/var/log/audit /dev/mapper/vg_root-lv_audit  ext4   rw,relatime
+==> linux.qemu.linux: ├─/boot              /dev/vda1                     ext4   rw,relatime
+==> linux.qemu.linux: └─/home              /dev/mapper/vg_root-lv_home   ext4   rw,relatime
+==> linux.qemu.linux: --- mandatory access control ---
+==> linux.qemu.linux: AppArmor: Yes
+==> linux.qemu.linux: Provisioning with Ansible...
+==> linux.qemu.linux: Setting up proxy adapter for Ansible....
+==> linux.qemu.linux: Executing Ansible Galaxy
+==> linux.qemu.linux: Starting galaxy collection install process
+==> linux.qemu.linux: Nothing to do. All requested collections are already installed. If you want to reinstall them, consider using `--force`.
+==> linux.qemu.linux: Executing Ansible: ansible-playbook -e packer_build_name="linux" -e packer_builder_type=qemu -e packer_http_addr=10.0.2.2:8568 --ssh-extra-args '-o IdentitiesOnly=yes' --extra-vars harden_linux_build_username=packer -e ansible_ssh_private_key_file=/tmp/ansible-key2306659927 -i /tmp/packer-provisioner-ansible4067937772 ~/Projects/golden-image-factory/ansible/playbooks/linux-harden.yml
+==> linux.qemu.linux:
+==> linux.qemu.linux: PLAY [Harden Linux golden image] ***********************************************
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [Gathering Facts] *********************************************************
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [Report what is being hardened] *******************************************
+==> linux.qemu.linux: ok: [default] => {
+==> linux.qemu.linux:     "msg": "Hardening Ubuntu 24.04 (Debian family) — MAC system will be AppArmor."
+==> linux.qemu.linux: }
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [Wait for any distribution package manager lock to clear] *****************
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : Load family-specific variables] ***************************
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : Assert this role supports the target] *********************
+==> linux.qemu.linux: ok: [default] => {
+==> linux.qemu.linux:     "changed": false,
+==> linux.qemu.linux:     "msg": "All assertions passed"
+==> linux.qemu.linux: }
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : Install packages required by the hardening controls] ******
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 1.1.1 | Disable unused filesystem kernel modules] *********
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 1.1.1 | Unload the modules if they are already loaded] ****
+==> linux.qemu.linux: ok: [default] => (item=cramfs)
+==> linux.qemu.linux: ok: [default] => (item=freevxfs)
+==> linux.qemu.linux: ok: [default] => (item=jffs2)
+==> linux.qemu.linux: ok: [default] => (item=hfs)
+==> linux.qemu.linux: ok: [default] => (item=hfsplus)
+==> linux.qemu.linux: ok: [default] => (item=squashfs)
+==> linux.qemu.linux: ok: [default] => (item=udf)
+==> linux.qemu.linux: ok: [default] => (item=usb-storage)
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 1.5.1 | Ensure address space layout randomisation is enabled] ***
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 1.1.x | Apply nodev/nosuid/noexec to separate filesystems] ***
+==> linux.qemu.linux: changed: [default] => (item=/tmp -> defaults,nodev,nosuid,noexec)
+==> linux.qemu.linux: changed: [default] => (item=/var/tmp -> defaults,nodev,nosuid,noexec)
+==> linux.qemu.linux: changed: [default] => (item=/home -> defaults,nodev,nosuid)
+==> linux.qemu.linux: changed: [default] => (item=/var/log -> defaults,nodev,nosuid,noexec)
+==> linux.qemu.linux: changed: [default] => (item=/var/log/audit -> defaults,nodev,nosuid,noexec)
+==> linux.qemu.linux: skipping: [default] => (item=/dev/shm -> defaults,nodev,nosuid,noexec)
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 1.1.x | Fail if an expected filesystem is missing] ********
+==> linux.qemu.linux: ok: [default] => (item=/tmp) => {
+==> linux.qemu.linux:     "ansible_loop_var": "item",
+==> linux.qemu.linux:     "changed": false,
+==> linux.qemu.linux:     "item": "/tmp",
+==> linux.qemu.linux:     "msg": "All assertions passed"
+==> linux.qemu.linux: }
+==> linux.qemu.linux: ok: [default] => (item=/var/tmp) => {
+==> linux.qemu.linux:     "ansible_loop_var": "item",
+==> linux.qemu.linux:     "changed": false,
+==> linux.qemu.linux:     "item": "/var/tmp",
+==> linux.qemu.linux:     "msg": "All assertions passed"
+==> linux.qemu.linux: }
+==> linux.qemu.linux: ok: [default] => (item=/home) => {
+==> linux.qemu.linux:     "ansible_loop_var": "item",
+==> linux.qemu.linux:     "changed": false,
+==> linux.qemu.linux:     "item": "/home",
+==> linux.qemu.linux:     "msg": "All assertions passed"
+==> linux.qemu.linux: }
+==> linux.qemu.linux: ok: [default] => (item=/var/log) => {
+==> linux.qemu.linux:     "ansible_loop_var": "item",
+==> linux.qemu.linux:     "changed": false,
+==> linux.qemu.linux:     "item": "/var/log",
+==> linux.qemu.linux:     "msg": "All assertions passed"
+==> linux.qemu.linux: }
+==> linux.qemu.linux: ok: [default] => (item=/var/log/audit) => {
+==> linux.qemu.linux:     "ansible_loop_var": "item",
+==> linux.qemu.linux:     "changed": false,
+==> linux.qemu.linux:     "item": "/var/log/audit",
+==> linux.qemu.linux:     "msg": "All assertions passed"
+==> linux.qemu.linux: }
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 1.1.9 | Ensure /dev/shm is mounted nodev,nosuid,noexec] ***
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 1.7.1 | Install the warning banner] ***********************
+==> linux.qemu.linux: changed: [default] => (item=/etc/issue)
+==> linux.qemu.linux: changed: [default] => (item=/etc/issue.net)
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 1.7.2 | Remove OS and version information from the MOTD] ***
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 1.7.3 | Disable Ubuntu's dynamic MOTD news service] *******
+==> linux.qemu.linux: [WARNING]: Module remote_tmp /root/.ansible/tmp did not exist and was created with a mode of 0700, this may cause issues when running as another user. To avoid this, create the remote_tmp dir with the correct permissions manually
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 2.3.x | Remove legacy insecure clients] *******************
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 2.2.x | Disable and mask services with no place on a server image] ***
+==> linux.qemu.linux: ok: [default] => (item=avahi-daemon)
+==> linux.qemu.linux: ok: [default] => (item=cups)
+==> linux.qemu.linux: ok: [default] => (item=rpcbind)
+==> linux.qemu.linux: ok: [default] => (item=nfs-server)
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 2.2.x | Report services that were not present to disable] ***
+==> linux.qemu.linux: skipping: [default] => (item=avahi-daemon)
+==> linux.qemu.linux: skipping: [default] => (item=cups)
+==> linux.qemu.linux: skipping: [default] => (item=rpcbind)
+==> linux.qemu.linux: skipping: [default] => (item=nfs-server)
+==> linux.qemu.linux: skipping: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 2.1.1 | Ensure time synchronisation is enabled] ***********
+==> linux.qemu.linux: skipping: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 2.1.1 | Ensure time synchronisation is enabled (Debian)] ***
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 3.5.1 | Ensure the firewall package is installed] *********
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 3.5.1 | Ensure firewalld is enabled and running] **********
+==> linux.qemu.linux: skipping: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 3.5.1 | Set the default zone to drop-by-default with SSH permitted] ***
+==> linux.qemu.linux: skipping: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 3.5.1 | Ensure the default zone target denies unmatched inbound traffic] ***
+==> linux.qemu.linux: skipping: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 3.5.1 | Allow SSH before enabling ufw] ********************
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 3.5.1 | Deny inbound traffic by default] ******************
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 3.5.1 | Allow outbound traffic by default] ****************
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 3.5.1 | Deny routed traffic by default] *******************
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 3.5.1 | Enable ufw] ***************************************
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 3.x | Apply kernel parameters] ****************************
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.ip_forward = 0)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.conf.all.send_redirects = 0)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.conf.default.send_redirects = 0)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.conf.all.accept_source_route = 0)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.conf.default.accept_source_route = 0)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.conf.all.accept_redirects = 0)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.conf.default.accept_redirects = 0)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.conf.all.secure_redirects = 0)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.conf.default.secure_redirects = 0)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.conf.all.log_martians = 1)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.conf.default.log_martians = 1)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.icmp_echo_ignore_broadcasts = 1)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.icmp_ignore_bogus_error_responses = 1)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.conf.all.rp_filter = 1)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.conf.default.rp_filter = 1)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv4.tcp_syncookies = 1)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv6.conf.all.accept_ra = 0)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv6.conf.default.accept_ra = 0)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv6.conf.all.accept_redirects = 0)
+==> linux.qemu.linux: changed: [default] => (item=net.ipv6.conf.default.accept_redirects = 0)
+==> linux.qemu.linux: ok: [default] => (item=kernel.randomize_va_space = 2)
+==> linux.qemu.linux: changed: [default] => (item=kernel.yama.ptrace_scope = 1)
+==> linux.qemu.linux: changed: [default] => (item=fs.suid_dumpable = 0)
+==> linux.qemu.linux: changed: [default] => (item=kernel.kptr_restrict = 2)
+==> linux.qemu.linux: changed: [default] => (item=kernel.dmesg_restrict = 1)
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 3.x | Report kernel parameters that could not be applied] ***
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.ip_forward)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.conf.all.send_redirects)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.conf.default.send_redirects)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.conf.all.accept_source_route)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.conf.default.accept_source_route)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.conf.all.accept_redirects)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.conf.default.accept_redirects)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.conf.all.secure_redirects)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.conf.default.secure_redirects)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.conf.all.log_martians)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.conf.default.log_martians)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.icmp_echo_ignore_broadcasts)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.icmp_ignore_bogus_error_responses)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.conf.all.rp_filter)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.conf.default.rp_filter)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv4.tcp_syncookies)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv6.conf.all.accept_ra)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv6.conf.default.accept_ra)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv6.conf.all.accept_redirects)
+==> linux.qemu.linux: skipping: [default] => (item=net.ipv6.conf.default.accept_redirects)
+==> linux.qemu.linux: skipping: [default] => (item=kernel.randomize_va_space)
+==> linux.qemu.linux: skipping: [default] => (item=kernel.yama.ptrace_scope)
+==> linux.qemu.linux: skipping: [default] => (item=fs.suid_dumpable)
+==> linux.qemu.linux: skipping: [default] => (item=kernel.kptr_restrict)
+==> linux.qemu.linux: skipping: [default] => (item=kernel.dmesg_restrict)
+==> linux.qemu.linux: skipping: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 3.x | Ensure the sysctl drop-in is not world writable] ****
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 4.1.1 | Ensure the audit package is installed] ************
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 4.1.1 | Ensure auditd is enabled and running] *************
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 4.1.2 | Configure audit log retention and disk policy] ****
+==> linux.qemu.linux: changed: [default] => (item=max_log_file)
+==> linux.qemu.linux: ok: [default] => (item=num_logs)
+==> linux.qemu.linux: ok: [default] => (item=max_log_file_action)
+==> linux.qemu.linux: changed: [default] => (item=space_left)
+==> linux.qemu.linux: ok: [default] => (item=space_left_action)
+==> linux.qemu.linux: changed: [default] => (item=admin_space_left)
+==> linux.qemu.linux: changed: [default] => (item=admin_space_left_action)
+==> linux.qemu.linux: changed: [default] => (item=disk_full_action)
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 4.1.3 | Install audit rules] ******************************
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 4.1.4 | Ensure audit log files are not readable by other users] ***
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.2 | Verify sshd_config includes the drop-in directory before any setting] ***
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.2 | Fail if the drop-in would be overridden] ************
+==> linux.qemu.linux: ok: [default] => {
+==> linux.qemu.linux:     "changed": false,
+==> linux.qemu.linux:     "msg": "All assertions passed"
+==> linux.qemu.linux: }
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.2.1 | Ensure the sshd drop-in directory exists with correct permissions] ***
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.2.x | Write the hardened sshd configuration] ************
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.2.1 | Ensure permissions on /etc/ssh/sshd_config are 0600] ***
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.2.2 | Locate SSH host private keys] *********************
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.2.3 | Locate SSH host public keys] **********************
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.2.2 | Ensure SSH host private keys are not world or group readable] ***
+==> linux.qemu.linux: ok: [default] => (item=/etc/ssh/ssh_host_ecdsa_key)
+==> linux.qemu.linux: ok: [default] => (item=/etc/ssh/ssh_host_rsa_key)
+==> linux.qemu.linux: ok: [default] => (item=/etc/ssh/ssh_host_ed25519_key)
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.2.3 | Ensure SSH host public keys are 0644] *************
+==> linux.qemu.linux: ok: [default] => (item=/etc/ssh/ssh_host_ed25519_key.pub)
+==> linux.qemu.linux: ok: [default] => (item=/etc/ssh/ssh_host_ecdsa_key.pub)
+==> linux.qemu.linux: ok: [default] => (item=/etc/ssh/ssh_host_rsa_key.pub)
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.3.1 | Configure password quality requirements] **********
+==> linux.qemu.linux: changed: [default] => (item=minlen)
+==> linux.qemu.linux: changed: [default] => (item=dcredit)
+==> linux.qemu.linux: changed: [default] => (item=ucredit)
+==> linux.qemu.linux: changed: [default] => (item=ocredit)
+==> linux.qemu.linux: changed: [default] => (item=lcredit)
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.4.2 | Configure account lockout on repeated failures] ***
+==> linux.qemu.linux: changed: [default] => (item=deny)
+==> linux.qemu.linux: changed: [default] => (item=unlock_time)
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.5.1 | Configure password ageing defaults] ***************
+==> linux.qemu.linux: changed: [default] => (item=PASS_MAX_DAYS)
+==> linux.qemu.linux: changed: [default] => (item=PASS_MIN_DAYS)
+==> linux.qemu.linux: ok: [default] => (item=PASS_WARN_AGE)
+==> linux.qemu.linux: changed: [default] => (item=UMASK)
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.5.2 | Ensure the default user shell timeout is set] *****
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.5.3 | Ensure the default umask is restrictive] **********
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.6.1 | Ensure root is the only UID 0 account] ************
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.6.1 | Fail if any account other than root has UID 0] ****
+==> linux.qemu.linux: ok: [default] => {
+==> linux.qemu.linux:     "changed": false,
+==> linux.qemu.linux:     "msg": "All assertions passed"
+==> linux.qemu.linux: }
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.6.2 | Ensure system accounts cannot log in] *************
+==> linux.qemu.linux: skipping: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.6.3 | Ensure root's PATH contains no world-writable or empty entries] ***
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.6.3 | Report an unsafe root PATH] ***********************
+==> linux.qemu.linux: ok: [default] => {
+==> linux.qemu.linux:     "changed": false,
+==> linux.qemu.linux:     "msg": "All assertions passed"
+==> linux.qemu.linux: }
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.1.1 | Ensure permissions on cron directories and crontab] ***
+==> linux.qemu.linux: changed: [default] => (item=/etc/cron.d)
+==> linux.qemu.linux: changed: [default] => (item=/etc/cron.hourly)
+==> linux.qemu.linux: changed: [default] => (item=/etc/cron.daily)
+==> linux.qemu.linux: changed: [default] => (item=/etc/cron.weekly)
+==> linux.qemu.linux: changed: [default] => (item=/etc/cron.monthly)
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.1.2 | Ensure permissions on /etc/crontab] ***************
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.1.8 | Restrict cron to root by creating an empty cron.allow] ***
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.1.8 | Remove cron.deny, which is ignored once cron.allow exists] ***
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.1.9 | Restrict at to root by creating an empty at.allow] ***
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : 5.1.9 | Remove at.deny] ***********************************
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : Install the image finalisation script] ********************
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : Record that the image was hardened, and by what] **********
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [harden_linux : Restore the immutable-ish permissions on the build info file] ***
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: RUNNING HANDLER [harden_linux : Restart sshd] **********************************
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: RUNNING HANDLER [harden_linux : Restart auditd] ********************************
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: RUNNING HANDLER [harden_linux : Rebuild initramfs] *****************************
+==> linux.qemu.linux: changed: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: TASK [Confirm mandatory access control is still enforcing after hardening] *****
+==> linux.qemu.linux: ok: [default]
+==> linux.qemu.linux:
+==> linux.qemu.linux: PLAY RECAP *********************************************************************
+==> linux.qemu.linux: default                    : ok=62   changed=31   unreachable=0    failed=0    skipped=7    rescued=0    ignored=0
+==> linux.qemu.linux:
+==> linux.qemu.linux: Gracefully halting virtual machine...
+==> linux.qemu.linux: Converting hard drive...
+==> linux.qemu.linux: Running post-processor:  (type manifest)
+Build 'linux.qemu.linux' finished after 14 minutes 27 seconds.
+
+==> Wait completed after 14 minutes 27 seconds
+
+==> Builds finished. The artifacts of successful builds are:
+--> linux.qemu.linux: VM files in directory: builds/qemu-ubuntu2404-0.1.0
+--> linux.qemu.linux: VM files in directory: builds/qemu-ubuntu2404-0.1.0

@@ -8,8 +8,8 @@ The claim this repo exists to prove:
 > Hardened, versioned, tested and attested OS images, produced reproducibly on VMware and
 > in the cloud, with evidence of what is inside them and when they expire.
 
-> **Build status: phases 0 and 1 complete** — Rocky 9 and Ubuntu 24.04 both build end to
-> end. Phase 2 (Ansible hardening) next. This repo is under active construction and the table below is kept accurate as it goes. Anything not yet built is in
+> **Build status: phases 0, 1 and 2 complete** — Rocky 9 and Ubuntu 24.04 both build and
+> harden end to end. Phase 3 (Windows Server 2022) next. This repo is under active construction and the table below is kept accurate as it goes. Anything not yet built is in
 > [Roadmap](#roadmap) with a date, not implied by silence. See
 > [Current state](#current-state) for exactly what exists today.
 
@@ -21,7 +21,7 @@ The load-bearing table. Read it before anything else.
 
 | Packer source | Where it runs | Actually executed? |
 |---|---|---|
-| `qemu` | Local QEMU/KVM, and a GitHub Actions runner from phase 6 | **Yes, locally** — [Rocky 9.8, 9m06s](evidence/qemu-rocky9-2026-08-14.log) and [Ubuntu 24.04.4, 14m04s](evidence/qemu-ubuntu2404-2026-08-14.log). **Not yet in CI** |
+| `qemu` | Local QEMU/KVM, and a GitHub Actions runner from phase 6 | **Yes, locally** — hardened [Rocky 9.8, 9m30s](evidence/qemu-rocky9-hardened-2026-08-14.log) and [Ubuntu 24.04.4, 14m27s](evidence/qemu-ubuntu2404-hardened-2026-08-14.log). **Not yet in CI** |
 | `vmware-iso` | VMware Workstation, local machine | **Not yet** — validated only; Workstation not yet installed on the build host |
 | `vsphere-iso` | Nested ESXi 8 + VCSA, 60-day evaluation | **Not yet** — `packer validate` only until phase 9 lands |
 | `azure-arm` | Azure Compute Gallery, free credit | **Not yet** — `packer validate` only; target phase 8 |
@@ -47,7 +47,7 @@ the same shape. Full reasoning in [ADR-0006](docs/DECISIONS.md#adr-0006).
 
 ## Current state
 
-**Phase 0 — shift-left foundations: complete. Phase 1 — Packer skeleton: complete.**
+**Phases 0 (shift-left), 1 (Packer skeleton) and 2 (Ansible hardening): complete.**
 
 What exists and works today:
 
@@ -74,11 +74,16 @@ What exists and works today:
 - `policy/packer.rego` — the hand-written OPA policy that stands in for the Packer IaC
   scanning no vendor ships. Five deny rules, each verified to fire against a deliberately
   bad template.
+- `ansible/roles/harden_linux` — a selected subset of CIS Level 1 applied identically to
+  both distributions, every task tagged with its CIS section. `ansible-lint` clean at the
+  **production** profile. The build account, machine-id, SSH host keys and build traces are
+  removed at shutdown by a finalisation script, because the account cannot delete itself
+  while Packer is logged in as it ([ADR-0015](docs/DECISIONS.md#adr-0015)).
 - `scripts/make-build-key.sh` — ephemeral per-build SSH key, so no build credential exists
   in git and none outlives the build.
 - [`docs/IMAGE-STANDARD.md`](docs/IMAGE-STANDARD.md) — partition layout, packages and the
   rule that decides what goes in the installer versus configuration management.
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — fourteen ADRs.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — sixteen ADRs.
 - [`evidence/`](evidence/) — the gates tested, with the results that were inconvenient kept
   rather than replaced by ones that pass. Two are worth reading on their own:
   **AWS's canonical example credential pair does not trip gitleaks** (it is allowlisted
@@ -100,8 +105,8 @@ criteria are met and its evidence is committed.
 |---|---|---|
 | 0 | Shift-left gates, repo rulesets, docs skeleton | **done — 2026-08-14** |
 | 1 | Packer skeleton; Rocky 9 kickstart, Ubuntu 24.04 autoinstall; `qemu` build end to end | **done — 2026-08-14** |
-| 2 | `harden_linux` Ansible role, CIS Level 1 subset with a stated applied/not-applied table | next |
-| 3 | Windows Server 2022 — `Autounattend.xml`, Ansible over WinRM, `harden_windows`, sysprep | |
+| 2 | `harden_linux` Ansible role, CIS Level 1 subset with a stated applied/not-applied table | **done — 2026-08-14** |
+| 3 | Windows Server 2022 — `Autounattend.xml`, Ansible over WinRM, `harden_windows`, sysprep | next |
 | 4 | goss and Pester gates, in-guest, with machine-readable compliance reports | |
 | 6 | CI: lint, matrix build, monthly scheduled rebuild, releases | |
 | 7 | Supply chain — syft SBOM, trivy CVE **diff** gate, cosign keyless, provenance, one OpenVEX triage | after interview |
@@ -125,9 +130,11 @@ finished.
   from a marketplace base image rather than an ISO — the correct Azure pattern. Azure and
   VMware images share the Ansible roles and the test suites, not the installer
   configuration.
-- **It does not apply a CIS benchmark wholesale.** It applies a selected subset with the
-  omissions listed and justified. Blanket-applying a benchmark to an image is the easy
-  half; choosing is the job.
+- **It does not apply a CIS benchmark wholesale, and does not claim to.** It applies a
+  selected subset of Level 1 with every omission listed and justified in
+  [`IMAGE-STANDARD.md`](docs/IMAGE-STANDARD.md) — the not-applied table is longer than the
+  applied one. No CIS certification, no Level 2, no claim of full Level 1 conformance.
+  Blanket-applying a benchmark to an image is the easy half; choosing is the job.
 - **It is a proof of concept, not a production image factory.** Where a control is partial,
   the docs say partial.
 

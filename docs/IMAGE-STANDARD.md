@@ -2,10 +2,13 @@
 
 What a compliant image from this factory contains, and why.
 
-> **Status: phase 1 content.** Structure — partitioning, packages, the build
-> account, identity metadata. The applied/not-applied **hardening control table** is
-> phase 2 and is not here yet. Until it lands, this repo claims no CIS conformance of any
-> kind, and the [README](../README.md) says so.
+> **Status: phases 1 and 2.** Structure (partitioning, packages, build account, identity
+> metadata) and the hardening control table, including everything deliberately not applied.
+>
+> **What this repo claims:** a *selected subset* of CIS Level 1, listed control by control
+> below, applied identically to Rocky 9 and Ubuntu 24.04. It does **not** claim CIS
+> certification, CIS Level 2, or full Level 1 conformance. The not-applied table is the
+> honest half and is longer than most repos would print.
 
 ## The rule this document exists to enforce
 
@@ -172,3 +175,83 @@ purpose: the manifest is what the pipeline and the phase 5 catalogue consume, an
 answer "what am I, and can I still be trusted?" without reference to anything external.
 `SOURCE_ISO_CHECKSUM` makes a deployed VM traceable to the exact installation media it came
 from.
+
+---
+
+## Hardening: what is applied
+
+CIS Distribution Independent Linux Benchmark v2.0.0, Level 1, selected subset. The
+distribution-independent numbering is used deliberately: Rocky and Ubuntu have their own
+benchmarks with different numbering, and this role targets both. Claiming one benchmark's
+section numbers while shipping the other distribution would be worse than using neither.
+
+Implemented by [`ansible/roles/harden_linux`](../ansible/roles/harden_linux). Every task
+name carries its section number, so the code maps to the benchmark without this document
+in hand.
+
+| CIS | Control | Applied | Note |
+|---|---|---|---|
+| 1.1.1 | Unused filesystem modules disabled | ✅ | `install ... /bin/true` **and** `blacklist`, plus an initramfs rebuild. Doing only the first leaves udev autoloading open |
+| 1.1.2–1.1.9 | `nodev`/`nosuid`/`noexec` on `/tmp`, `/var/tmp`, `/home`, `/var/log`, `/var/log/audit`, `/dev/shm` | ✅ | The pay-off for the phase 1 partition layout. Fails the build if an expected filesystem is missing rather than hardening five of six and reporting success |
+| 1.5.1 | ASLR enabled | ✅ | |
+| 1.7.1–1.7.2 | Warning banner, MOTD stripped of OS detail | ✅ | Banner is deliberately generic — naming the org or OS version is free reconnaissance |
+| 2.1.1 | Time synchronisation | ✅ | chrony on both, so there is one answer across the estate |
+| 2.2.x | Unnecessary services disabled and masked | ✅ | avahi, cups, rpcbind, nfs-server |
+| 2.3.x | Legacy clients removed | ✅ | telnet, rsh, talk, ypbind, tftp — removed, not just stopped |
+| 3.1–3.3 | Kernel network parameters | ✅ | 24 parameters; source routing, redirects, martian logging, rp_filter, syncookies, IPv6 RA |
+| 3.5.1 | Host firewall, default deny inbound | ✅ | firewalld (target DROP) on Rocky, ufw on Ubuntu. **Egress deliberately unrestricted** — see below |
+| 4.1.1–4.1.2 | auditd installed, enabled, retention configured | ✅ | |
+| 4.1.3–4.1.16 | Audit rules | ⚠️ Partial | A working subset: time, identity, network config, MAC policy, logins, permission changes, privilege escalation, modules, mounts. Not the full rule set — see below |
+| 4.1.4 | Audit log permissions | ✅ | |
+| 5.1.1–5.1.9 | cron/at permissions and allow-list | ✅ | Empty `cron.allow` + removed `cron.deny` — the model people get backwards |
+| 5.2.x | SSH server configuration | ✅ | Written as a drop-in, **after verifying** `Include` precedes conflicting settings |
+| 5.3.1 | Password quality | ✅ | minlen 14, all four credit classes |
+| 5.4.2 | Account lockout | ⚠️ Partial | `faillock.conf` configured; PAM stack not rewritten — see below |
+| 5.5.1–5.5.3 | Password ageing, TMOUT, umask | ✅ | umask 027, not 077 — see below |
+| 5.6.1 | Only root has UID 0 | ✅ | Asserted, fails the build |
+| 5.6.3 | root PATH integrity | ✅ | Asserted, fails the build |
+| — | Build account and sudoers removed | ✅ | At shutdown, by the finalisation script — see ADR-0015 |
+| — | machine-id, SSH host keys, logs, shell history cleared | ✅ | Every VM from one image would otherwise share a host key |
+
+## Hardening: what is deliberately NOT applied
+
+**This table is the point of the exercise.** Blanket-applying a benchmark to an image is
+the easy half and produces something that either breaks workloads or gets switched off
+wholesale within a month. Choosing, and being able to say why, is the job.
+
+Four categories: controls that would break the build itself, controls that belong at
+deployment rather than in the image, controls needing a site-specific decision, and
+controls whose cost exceeds their benefit here.
+
+| CIS | Control | Why not |
+|---|---|---|
+| 4.1.17 | `-e 2` — make audit rules immutable until reboot | **Belongs at deployment.** A golden image is a starting point; freezing the audit configuration means the consuming team cannot add the rules their workload actually needs without a reboot. The line is present and commented in the rules file, ready to be enabled by the deployment |
+| 4.1.x | `admin_space_left_action = halt` | **Self-inflicted denial of service.** Halting a production host because its audit partition filled is worse than the risk it mitigates, and it is the single most commonly reverted CIS setting. Mitigated instead by `/var/log/audit` being its own filesystem and `SYSLOG` on the warning threshold |
+| 4.1.x | The complete CIS audit rule set | **Volume over signal.** The full set generates enormous noise on a server running one application. The subset applied covers what is actually read during an incident. A deployment with a SIEM budget should extend it |
+| 5.4.x | Rewriting the PAM stack to insert `pam_faillock` | **Breaks the build, and worse.** On RHEL this is `authselect`, on Ubuntu `pam-auth-update`; hand-editing `/etc/pam.d` is the most reliable way to produce an image nobody can log into. `faillock.conf` is honoured where the distribution already enables the module, which both do. Marked Partial rather than claimed |
+| 3.5.x | Egress firewall rules | **Cannot be known at build time.** A golden image has no idea what its eventual workload must reach. An image shipping guessed egress rules is one whose firewall gets flushed by the first team to deploy it. Egress policy belongs to the deployment |
+| 5.5.3 | `umask 077` | **Site-specific decision.** 027 is applied. 077 breaks any workload expecting group-readable files and is a common cause of a hardening role being disabled entirely. Overridable via `harden_linux_umask` |
+| 1.1.x | Separate `/var/log/audit` on its own **physical** disk | **Cost exceeds benefit.** It is a separate logical volume, which addresses the fill-up risk. A separate spindle addresses an I/O contention risk this workload profile does not have |
+| 1.6.x | SELinux/AppArmor policy authoring | **Out of scope.** Both are enforcing with vendor policy. Writing custom policy for an application nobody has chosen yet is not possible |
+| 1.3.x | AIDE / file integrity monitoring | **Belongs at deployment.** A baseline database generated at build time is invalidated by the first legitimate change after deployment. Initialising AIDE is a deployment step |
+| 1.4.x | Bootloader password | **Breaks unattended operation.** A GRUB password prevents unattended reboot, which is exactly what a cloud or hypervisor-hosted VM must do. Physical console access is the threat it addresses, and neither Azure nor vSphere exposes one in the relevant sense |
+| 1.8.x | GDM / graphical login hardening | **Not applicable.** There is no display manager on a minimal server image |
+| 2.2.x | Removing X11, Avahi, print server *packages* | **Already absent.** A minimal install does not have them. The role masks the services in case a later dependency pulls one in |
+| 6.x | Full filesystem permission audit | **Not a build-time control.** Scanning every file for world-writable permissions and unowned files is a runtime job, and its findings on a fresh image are always empty by construction |
+| — | FIPS mode | **Site-specific decision** with real consequences: it restricts algorithms system-wide and breaks software that uses non-approved crypto. Rocky's installer offers a FIPS boot entry; enabling it is a deployment decision, not an image default |
+
+### Why not use an existing Galaxy CIS role?
+
+Well-maintained roles exist — `ansible-lockdown/RHEL9-CIS` is the obvious one — and they
+implement far more of the benchmark than this does.
+
+They were not used, and the reason is the not-applied table above. Those roles are built to
+be comprehensive and tuned by a long list of variables, which means the interesting decision
+— *which controls does this image apply, and why not the others* — ends up expressed as a
+hundred booleans in a vars file that nobody reads as a decision record. Writing a smaller
+role made every inclusion and exclusion deliberate and explains each one in the place a
+reviewer looks.
+
+For a production estate the trade goes the other way: take the maintained role, and put the
+effort into the exception register instead. That is the honest recommendation, and it is not
+the same as what a portfolio repo should demonstrate.

@@ -1,0 +1,37 @@
+---
+# CIS 1.7 — warning banners.
+#
+# /etc/issue.net is the one that matters here, because it is what sshd presents
+# before authentication. /etc/issue covers local consoles.
+
+- name: 1.7.1 | Install the warning banner
+  ansible.builtin.copy:
+    content: "{{ harden_linux_banner }}"
+    dest: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - /etc/issue
+    - /etc/issue.net
+
+- name: 1.7.2 | Remove OS and version information from the MOTD
+  # The default MOTD on both distributions advertises the exact OS release to
+  # anyone who gets far enough to see it. That is free reconnaissance.
+  ansible.builtin.copy:
+    content: ""
+    dest: /etc/motd
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: 1.7.3 | Disable Ubuntu's dynamic MOTD news service
+  # motd-news phones home to Canonical on a timer and prints the result at login.
+  # Neither behaviour belongs in a server image.
+  ansible.builtin.lineinfile:
+    path: /etc/default/motd-news
+    regexp: "^ENABLED="
+    line: "ENABLED=0"
+    create: false
+  when: ansible_facts['os_family'] == 'Debian'
+  failed_when: false

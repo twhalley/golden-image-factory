@@ -1,0 +1,132 @@
+---
+# CIS 5.3 – 5.6 — password quality, lockout, ageing and account hygiene.
+
+- name: 5.3.1 | Configure password quality requirements
+  ansible.builtin.lineinfile:
+    path: "{{ harden_linux_pwquality_conf }}"
+    regexp: "^#?\\s*{{ item.key }}\\s*="
+    line: "{{ item.key }} = {{ item.value }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - {key: minlen, value: "{{ harden_linux_pwquality_minlen }}"}
+    - {key: dcredit, value: "{{ harden_linux_pwquality_dcredit }}"}
+    - {key: ucredit, value: "{{ harden_linux_pwquality_ucredit }}"}
+    - {key: ocredit, value: "{{ harden_linux_pwquality_ocredit }}"}
+    - {key: lcredit, value: "{{ harden_linux_pwquality_lcredit }}"}
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: 5.4.2 | Configure account lockout on repeated failures
+  ansible.builtin.lineinfile:
+    path: "{{ harden_linux_faillock_conf }}"
+    regexp: "^#?\\s*{{ item.key }}\\s*="
+    line: "{{ item.key }} = {{ item.value }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - {key: deny, value: "{{ harden_linux_faillock_deny }}"}
+    - {key: unlock_time, value: "{{ harden_linux_faillock_unlock_time }}"}
+  loop_control:
+    label: "{{ item.key }}"
+
+# NOT DONE HERE, deliberately: wiring pam_faillock into the PAM stack itself.
+# On RHEL that is `authselect`, on Ubuntu it is pam-auth-update, and hand-editing
+# /etc/pam.d files is the single most reliable way to produce an image nobody can
+# log into. faillock.conf is read by pam_faillock where the distribution already
+# enables it, which both of these do by default. Recorded in
+# docs/IMAGE-STANDARD.md as a partial control rather than claimed as complete.
+
+- name: 5.5.1 | Configure password ageing defaults
+  ansible.builtin.lineinfile:
+    path: "{{ harden_linux_login_defs }}"
+    regexp: "^#?\\s*{{ item.key }}\\s"
+    line: "{{ item.key }}\t{{ item.value }}"
+    create: false
+  loop:
+    - {key: PASS_MAX_DAYS, value: "{{ harden_linux_password_max_days }}"}
+    - {key: PASS_MIN_DAYS, value: "{{ harden_linux_password_min_days }}"}
+    - {key: PASS_WARN_AGE, value: "{{ harden_linux_password_warn_age }}"}
+    - {key: UMASK, value: "{{ harden_linux_umask }}"}
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: 5.5.2 | Ensure the default user shell timeout is set
+  ansible.builtin.copy:
+    dest: /etc/profile.d/99-cis-tmout.sh
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by harden_linux (CIS 5.5.2).
+      # readonly so an interactive user cannot simply unset it.
+      TMOUT=900
+      readonly TMOUT
+      export TMOUT
+
+- name: 5.5.3 | Ensure the default umask is restrictive
+  ansible.builtin.copy:
+    dest: /etc/profile.d/99-cis-umask.sh
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by harden_linux (CIS 5.5.3).
+      # 027, not 077 — see defaults/main.yml for why.
+      umask {{ harden_linux_umask }}
+
+- name: 5.6.1 | Ensure root is the only UID 0 account
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      awk -F: '($3 == 0) { print $1 }' /etc/passwd | grep -vx root || true
+    executable: /bin/bash
+  register: harden_linux_uid0
+  changed_when: false
+  check_mode: false
+
+- name: 5.6.1 | Fail if any account other than root has UID 0
+  ansible.builtin.assert:
+    that:
+      - harden_linux_uid0.stdout | trim == ''
+    fail_msg: "Accounts other than root hold UID 0: {{ harden_linux_uid0.stdout }}"
+
+- name: 5.6.2 | Ensure system accounts cannot log in
+  ansible.builtin.user:
+    name: "{{ item }}"
+    shell: /sbin/nologin
+  loop: "{{ harden_linux_nologin_accounts }}"
+  when: harden_linux_nologin_accounts | length > 0
+
+- name: 5.6.3 | Ensure root's PATH contains no world-writable or empty entries
+  # `stat -L`, not `stat`. Without -L this reports the permissions of the SYMLINK
+  # rather than its target, and a symlink is always lrwxrwxrwx — so on any modern
+  # distribution with /sbin -> usr/bin this flags every merged-usr path as
+  # world-writable. It did exactly that here and failed the build.
+  #
+  # Worth keeping in mind beyond this line: a check that produces false positives
+  # gets disabled, and a disabled check is indistinguishable from one that never
+  # existed.
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      echo "$PATH" | tr ':' '\n' | while read -r d; do
+        [ -z "$d" ] && { echo "EMPTY_ENTRY"; continue; }
+        [ "$d" = "." ] && { echo "CURRENT_DIR"; continue; }
+        if [ -d "$d" ] && [ "$(stat -Lc '%A' "$d" | cut -c9)" = "w" ]; then echo "WORLD_WRITABLE:$d"; fi
+      done
+    executable: /bin/bash
+  register: harden_linux_root_path
+  changed_when: false
+  check_mode: false
+  become: true
+
+- name: 5.6.3 | Report an unsafe root PATH
+  ansible.builtin.assert:
+    that:
+      - harden_linux_root_path.stdout | trim == ''
+    fail_msg: "root's PATH is unsafe: {{ harden_linux_root_path.stdout }}"

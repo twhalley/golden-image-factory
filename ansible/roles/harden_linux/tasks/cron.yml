@@ -1,0 +1,59 @@
+---
+# CIS 5.1 — cron and at.
+#
+# The allow/deny model is the part people get backwards. An absent cron.allow
+# with an absent cron.deny means *everyone* may use cron. Creating an empty
+# cron.allow means only root may — because the file exists and nobody is in it.
+
+- name: 5.1.1 | Ensure permissions on cron directories and crontab
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0700"
+    state: directory
+  loop:
+    - /etc/cron.d
+    - /etc/cron.hourly
+    - /etc/cron.daily
+    - /etc/cron.weekly
+    - /etc/cron.monthly
+  failed_when: false
+
+- name: 5.1.2 | Ensure permissions on /etc/crontab
+  ansible.builtin.file:
+    path: /etc/crontab
+    owner: root
+    group: root
+    mode: "0600"
+  failed_when: false
+
+- name: 5.1.8 | Restrict cron to root by creating an empty cron.allow
+  ansible.builtin.file:
+    path: /etc/cron.allow
+    state: touch
+    owner: root
+    group: root
+    mode: "0600"
+    modification_time: preserve
+    access_time: preserve
+
+- name: 5.1.8 | Remove cron.deny, which is ignored once cron.allow exists
+  ansible.builtin.file:
+    path: /etc/cron.deny
+    state: absent
+
+- name: 5.1.9 | Restrict at to root by creating an empty at.allow
+  ansible.builtin.file:
+    path: /etc/at.allow
+    state: touch
+    owner: root
+    group: root
+    mode: "0600"
+    modification_time: preserve
+    access_time: preserve
+
+- name: 5.1.9 | Remove at.deny
+  ansible.builtin.file:
+    path: /etc/at.deny
+    state: absent

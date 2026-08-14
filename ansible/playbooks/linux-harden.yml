@@ -1,0 +1,53 @@
+---
+# Applied by Packer's ansible provisioner during the build, to every Linux
+# target: qemu, vmware-iso, vsphere-iso and azure-arm.
+#
+# That last one is the reason this is a playbook and a role rather than a shell
+# provisioner: the Azure image has no kickstart and no autoinstall, so this is
+# the ONLY place its configuration comes from. A control implemented in an
+# installer file covers three targets out of four (ADR-0011).
+
+- name: Harden Linux golden image
+  hosts: all
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Report what is being hardened
+      ansible.builtin.debug:
+        msg: >-
+          Hardening {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}
+          ({{ ansible_facts['os_family'] }} family) — MAC system will be
+          {{ 'SELinux' if ansible_facts['os_family'] == 'RedHat' else 'AppArmor' }}.
+
+    - name: Wait for any distribution package manager lock to clear
+      # Ubuntu's unattended-upgrades can still hold the apt lock immediately after
+      # first boot. Without this the first package task fails intermittently, and
+      # an intermittent failure in an image build is far more expensive to
+      # diagnose than a wait here.
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          for _ in $(seq 1 60); do
+            if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then exit 0; fi
+            sleep 5
+          done
+          exit 1
+        executable: /bin/bash
+      changed_when: false
+      when: ansible_facts['os_family'] == 'Debian'
+
+  roles:
+    - role: harden_linux
+
+  post_tasks:
+    - name: Confirm mandatory access control is still enforcing after hardening
+      # A hardening run that disables the thing it claims to rely on would be
+      # caught here rather than at test time. Cheap, and it has caught worse.
+      ansible.builtin.command:
+        cmd: "{{ 'getenforce' if ansible_facts['os_family'] == 'RedHat' else 'aa-enabled' }}"
+      register: harden_linux_mac_final
+      changed_when: false
+      failed_when: >-
+        (ansible_facts['os_family'] == 'RedHat' and harden_linux_mac_final.stdout != 'Enforcing')
+        or (ansible_facts['os_family'] == 'Debian' and harden_linux_mac_final.stdout is not search('Yes'))
