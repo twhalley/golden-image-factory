@@ -1,10 +1,10 @@
-# Real build log — qemu / rocky9 / 2026-08-14 (phase 2: hardened)
+# Real build log — qemu / rocky9 / 2026-08-14 (phases 1-4: built, hardened, tested)
 #
 # packer build -only='linux.qemu.linux' -var-file=packer/linux/rocky9.pkrvars.hcl \
-#   -var iso_url=<local path to verified ISO> -var git_commit=0ae9e79 packer/linux
+#   -var iso_url=<local path to verified ISO> -var git_commit=458b4e0 packer/linux
 #
-# Sanitised: ANSIBLE colour stripped, home paths replaced with ~.
-# Result: SUCCESS in 9m30s. Ansible: ok=59 changed=28 failed=0.
+# Sanitised: ANSI colour stripped, home paths replaced with ~.
+# Result: SUCCESS in 14m56s. Ansible ok=59 failed=0. goss: 140 assertions, 0 failed.
 
 linux.qemu.linux: output will be in this color.
 
@@ -12,36 +12,36 @@ linux.qemu.linux: output will be in this color.
 ==> linux.qemu.linux: Trying ~/.cache/golden-image-factory/isos/Rocky-9.8-x86_64-boot.iso
 ==> linux.qemu.linux: Trying ~/.cache/golden-image-factory/isos/Rocky-9.8-x86_64-boot.iso?checksum=sha256%3Ad6eeefdc8437c593d41a3150fcca4a734c55642ed472eecdda99720bb1370881
 ==> linux.qemu.linux: ~/.cache/golden-image-factory/isos/Rocky-9.8-x86_64-boot.iso?checksum=sha256%3Ad6eeefdc8437c593d41a3150fcca4a734c55642ed472eecdda99720bb1370881 => ~/.cache/golden-image-factory/isos/Rocky-9.8-x86_64-boot.iso
-==> linux.qemu.linux: Starting HTTP server on port 8351
-==> linux.qemu.linux: Found port for communicator (SSH, WinRM, etc): 2482.
+==> linux.qemu.linux: Starting HTTP server on port 8890
+==> linux.qemu.linux: Found port for communicator (SSH, WinRM, etc): 2299.
 ==> linux.qemu.linux: Using existing SSH private key
 ==> linux.qemu.linux: Looking for available port between 5900 and 6000 on 127.0.0.1
 ==> linux.qemu.linux: Starting VM, booting from CD-ROM
 ==> linux.qemu.linux: The VM will be run headless, without a GUI. If you want to
 ==> linux.qemu.linux: view the screen of the VM, connect via VNC without a password to
-==> linux.qemu.linux: vnc://127.0.0.1:5910
+==> linux.qemu.linux: vnc://127.0.0.1:5967
 ==> linux.qemu.linux: Overriding default Qemu arguments with qemuargs template option...
 ==> linux.qemu.linux: Waiting 10s for boot...
-==> linux.qemu.linux: Connecting to VM via VNC (127.0.0.1:5910)
+==> linux.qemu.linux: Connecting to VM via VNC (127.0.0.1:5967)
 ==> linux.qemu.linux: Typing the boot commands over VNC...
 ==> linux.qemu.linux: Not using a NetBridge -- skipping StepWaitGuestAddress
 ==> linux.qemu.linux: Using SSH communicator to connect: 127.0.0.1
 ==> linux.qemu.linux: Waiting for SSH to become available...
 ==> linux.qemu.linux: Connected to SSH!
-==> linux.qemu.linux: Provisioning with shell script: /tmp/packer-shell3444527818
+==> linux.qemu.linux: Provisioning with shell script: /tmp/packer-shell195319695
 ==> linux.qemu.linux: --- image build info ---
 ==> linux.qemu.linux: IMAGE_NAME=rocky9
 ==> linux.qemu.linux: IMAGE_VERSION=0.1.0
-==> linux.qemu.linux: GIT_COMMIT=0ae9e79
+==> linux.qemu.linux: GIT_COMMIT=458b4e0
 ==> linux.qemu.linux: SOURCE_ISO_CHECKSUM=sha256:d6eeefdc8437c593d41a3150fcca4a734c55642ed472eecdda99720bb1370881
-==> linux.qemu.linux: BUILD_DATE=2026-08-14T11:31:05Z
+==> linux.qemu.linux: BUILD_DATE=2026-08-14T18:23:36Z
 ==> linux.qemu.linux: BUILDER=qemu
 ==> linux.qemu.linux: --- filesystem layout ---
 ==> linux.qemu.linux: TARGET               SOURCE                        FSTYPE OPTIONS
 ==> linux.qemu.linux: /                    /dev/mapper/vg_root-lv_root   xfs    rw,relatime,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota
+==> linux.qemu.linux: ├─/boot              /dev/vda1                     xfs    rw,relatime,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota
 ==> linux.qemu.linux: ├─/home              /dev/mapper/vg_root-lv_home   xfs    rw,relatime,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota
 ==> linux.qemu.linux: ├─/tmp               /dev/mapper/vg_root-lv_tmp    xfs    rw,relatime,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota
-==> linux.qemu.linux: ├─/boot              /dev/vda1                     xfs    rw,relatime,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota
 ==> linux.qemu.linux: └─/var               /dev/mapper/vg_root-lv_var    xfs    rw,relatime,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota
 ==> linux.qemu.linux:   ├─/var/log         /dev/mapper/vg_root-lv_log    xfs    rw,relatime,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota
 ==> linux.qemu.linux:   │ └─/var/log/audit /dev/mapper/vg_root-lv_audit  xfs    rw,relatime,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota
@@ -53,7 +53,7 @@ linux.qemu.linux: output will be in this color.
 ==> linux.qemu.linux: Executing Ansible Galaxy
 ==> linux.qemu.linux: Starting galaxy collection install process
 ==> linux.qemu.linux: Nothing to do. All requested collections are already installed. If you want to reinstall them, consider using `--force`.
-==> linux.qemu.linux: Executing Ansible: ansible-playbook -e packer_build_name="linux" -e packer_builder_type=qemu -e packer_http_addr=10.0.2.2:8351 --ssh-extra-args '-o IdentitiesOnly=yes' --extra-vars harden_linux_build_username=packer -e ansible_ssh_private_key_file=/tmp/ansible-key1245095538 -i /tmp/packer-provisioner-ansible3034406794 ~/Projects/golden-image-factory/ansible/playbooks/linux-harden.yml
+==> linux.qemu.linux: Executing Ansible: ansible-playbook -e packer_build_name="linux" -e packer_builder_type=qemu -e packer_http_addr=10.0.2.2:8890 --ssh-extra-args '-o IdentitiesOnly=yes' --extra-vars harden_linux_build_username=packer -e ansible_ssh_private_key_file=/tmp/ansible-key821828490 -i /tmp/packer-provisioner-ansible4158849021 ~/Projects/golden-image-factory/ansible/playbooks/linux-harden.yml
 ==> linux.qemu.linux:
 ==> linux.qemu.linux: PLAY [Harden Linux golden image] ***********************************************
 ==> linux.qemu.linux:
@@ -408,12 +408,180 @@ linux.qemu.linux: output will be in this color.
 ==> linux.qemu.linux: PLAY RECAP *********************************************************************
 ==> linux.qemu.linux: default                    : ok=59   changed=28   unreachable=0    failed=0    skipped=11   rescued=0    ignored=0
 ==> linux.qemu.linux:
+==> linux.qemu.linux: Provisioning with shell script: /tmp/packer-shell1791325892
+==> linux.qemu.linux: Uploading packer/linux/../../tests/goss/ => /tmp/goss
+==> linux.qemu.linux: Provisioning with shell script: /tmp/packer-shell2533232038
+==> linux.qemu.linux: --- installing goss ---
+==> linux.qemu.linux: /tmp/goss.tar.gz: OK
+==> linux.qemu.linux: goss version 0.4.10
+==> linux.qemu.linux: Provisioning with shell script: /tmp/packer-shell557403648
+==> linux.qemu.linux: --- goss: machine-readable compliance report ---
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: --- goss: gate ---
+==> linux.qemu.linux: Command: pwquality-minlen: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: pwquality-minlen: stdout: matches expectation: ["14"]
+==> linux.qemu.linux: Command: password-max-days: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: password-max-days: stdout: matches expectation: ["365"]
+==> linux.qemu.linux: Command: no-extra-uid0-accounts: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: no-extra-uid0-accounts: stdout: matches expectation: ["0"]
+==> linux.qemu.linux: Command: faillock-deny: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: faillock-deny: stdout: matches expectation: ["5"]
+==> linux.qemu.linux: Command: sysctl-log-martians: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: sysctl-log-martians: stdout: matches expectation: ["1"]
+==> linux.qemu.linux: Command: sshd-effective-config: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: sshd-effective-config: stdout: matches expectation: ["/^permitrootlogin no$/","/^passwordauthentication no$/","/^permitemptypasswords no$/","/^x11forwarding no$/","/^maxauthtries 4$/","/^ignorerhosts yes$/","/^hostbasedauthentication no$/"]
+==> linux.qemu.linux: Command: separate-filesystems: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: separate-filesystems: stdout: matches expectation: ["/\\/boot/","/\\/home/","/\\/var/","/\\/var\\/log/","/\\/var\\/log\\/audit/","/\\/var\\/tmp/","/\\/tmp/"]
+==> linux.qemu.linux: Command: sysctl-ptrace-scope: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: sysctl-ptrace-scope: stdout: matches expectation: ["1"]
+==> linux.qemu.linux: Command: var-log-audit-mount-options: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: var-log-audit-mount-options: stdout: matches expectation: ["/nodev/","/nosuid/","/noexec/"]
+==> linux.qemu.linux: Command: tmp-mount-options: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: tmp-mount-options: stdout: matches expectation: ["/nodev/","/nosuid/","/noexec/"]
+==> linux.qemu.linux: Command: no-swap-configured: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: no-swap-configured: stdout: matches expectation: ["0"]
+==> linux.qemu.linux: Command: sysctl-suid-dumpable: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: sysctl-suid-dumpable: stdout: matches expectation: ["0"]
+==> linux.qemu.linux: Command: var-log-mount-options: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: var-log-mount-options: stdout: matches expectation: ["/nodev/","/nosuid/","/noexec/"]
+==> linux.qemu.linux: Command: sysctl-accept-redirects: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: sysctl-accept-redirects: stdout: matches expectation: ["0"]
+==> linux.qemu.linux: Command: root-filesystem-is-xfs: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: root-filesystem-is-xfs: stdout: matches expectation: ["xfs"]
+==> linux.qemu.linux: Command: var-tmp-mount-options: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: var-tmp-mount-options: stdout: matches expectation: ["/nodev/","/nosuid/","/noexec/"]
+==> linux.qemu.linux: Command: selinux-enforcing: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: selinux-enforcing: stdout: matches expectation: ["Enforcing"]
+==> linux.qemu.linux: Command: sysctl-accept-source-route: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: sysctl-accept-source-route: stdout: matches expectation: ["0"]
+==> linux.qemu.linux: Command: sysctl-randomize-va-space: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: sysctl-randomize-va-space: stdout: matches expectation: ["2"]
+==> linux.qemu.linux: Command: login-defs-umask: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: login-defs-umask: stdout: matches expectation: ["027"]
+==> linux.qemu.linux: Command: dev-shm-mount-options: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: dev-shm-mount-options: stdout: matches expectation: ["/nodev/","/nosuid/","/noexec/"]
+==> linux.qemu.linux: Command: selinux-config-persistent: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: selinux-config-persistent: stdout: matches expectation: ["enforcing"]
+==> linux.qemu.linux: Command: mandatory-access-control-enforcing: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: mandatory-access-control-enforcing: stdout: matches expectation: ["ENFORCING"]
+==> linux.qemu.linux: Command: sysctl-ip-forward: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: sysctl-ip-forward: stdout: matches expectation: ["0"]
+==> linux.qemu.linux: Package: chrony: installed: matches expectation: true
+==> linux.qemu.linux: Command: sshd-config-valid: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: sshd-config-valid: stdout: matches expectation: ["SSHD_CONFIG_OK"]
+==> linux.qemu.linux: Command: home-mount-options: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: home-mount-options: stdout: matches expectation: ["/nodev/","/nosuid/"]
+==> linux.qemu.linux: Package: ypbind: installed: matches expectation: false
+==> linux.qemu.linux: File: /etc/issue.net: exists: matches expectation: true
+==> linux.qemu.linux: File: /etc/issue.net: mode: matches expectation: "0644"
+==> linux.qemu.linux: File: /etc/issue.net: owner: matches expectation: "root"
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: File: /etc/issue.net: group: matches expectation: "root"
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: File: /etc/issue.net: contains: matches expectation: ["AUTHORISED ACCESS ONLY","!/\\\\S/","!/\\\\r/"]
+==> linux.qemu.linux: File: /etc/image-build-info: exists: matches expectation: true
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: File: /etc/image-build-info: mode: matches expectation: "0444"
+==> linux.qemu.linux: File: /etc/image-build-info: owner: matches expectation: "root"
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: File: /etc/image-build-info: group: matches expectation: "root"
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: DEPRECATION WARNING: file.contains has been renamed to file.contents
+==> linux.qemu.linux: File: /etc/image-build-info: filetype: matches expectation: "file"
+==> linux.qemu.linux: File: /etc/image-build-info: contains: matches expectation: ["IMAGE_NAME=","IMAGE_VERSION=","GIT_COMMIT=","SOURCE_ISO_CHECKSUM=","HARDENED=true","HARDENING_ROLE=harden_linux"]
+==> linux.qemu.linux: File: /etc/cron.allow: exists: matches expectation: true
+==> linux.qemu.linux: File: /etc/cron.allow: mode: matches expectation: "0600"
+==> linux.qemu.linux: File: /etc/cron.allow: owner: matches expectation: "root"
+==> linux.qemu.linux: File: /etc/cron.allow: group: matches expectation: "root"
+==> linux.qemu.linux: File: /etc/issue: exists: matches expectation: true
+==> linux.qemu.linux: File: /etc/issue: mode: matches expectation: "0644"
+==> linux.qemu.linux: File: /etc/profile.d/99-cis-tmout.sh: exists: matches expectation: true
+==> linux.qemu.linux: File: /etc/profile.d/99-cis-tmout.sh: mode: matches expectation: "0644"
+==> linux.qemu.linux: File: /etc/profile.d/99-cis-tmout.sh: contains: matches expectation: ["/^readonly TMOUT$/"]
+==> linux.qemu.linux: File: /etc/profile.d/99-cis-umask.sh: exists: matches expectation: true
+==> linux.qemu.linux: File: /etc/profile.d/99-cis-umask.sh: mode: matches expectation: "0644"
+==> linux.qemu.linux: File: /etc/profile.d/99-cis-umask.sh: contains: matches expectation: ["/^umask 027$/"]
+==> linux.qemu.linux: File: /etc/ssh/sshd_config: exists: matches expectation: true
+==> linux.qemu.linux: File: /etc/ssh/sshd_config: mode: matches expectation: "0600"
+==> linux.qemu.linux: File: /etc/ssh/sshd_config: owner: matches expectation: "root"
+==> linux.qemu.linux: File: /etc/ssh/sshd_config: group: matches expectation: "root"
+==> linux.qemu.linux: File: /etc/modprobe.d/99-cis-filesystems.conf: exists: matches expectation: true
+==> linux.qemu.linux: File: /etc/modprobe.d/99-cis-filesystems.conf: mode: matches expectation: "0644"
+==> linux.qemu.linux: File: /etc/modprobe.d/99-cis-filesystems.conf: contains: matches expectation: ["/^install cramfs \\/bin\\/true$/","/^blacklist cramfs$/","/^install squashfs \\/bin\\/true$/","/^blacklist squashfs$/","/^install usb-storage \\/bin\\/true$/","/^blacklist usb-storage$/"]
+==> linux.qemu.linux: File: /etc/ssh/sshd_config.d/00-cis-hardening.conf: exists: matches expectation: true
+==> linux.qemu.linux: File: /etc/ssh/sshd_config.d/00-cis-hardening.conf: mode: matches expectation: "0600"
+==> linux.qemu.linux: File: /etc/ssh/sshd_config.d/00-cis-hardening.conf: owner: matches expectation: "root"
+==> linux.qemu.linux: File: /etc/ssh/sshd_config.d/00-cis-hardening.conf: group: matches expectation: "root"
+==> linux.qemu.linux: File: /etc/ssh/sshd_config.d/00-cis-hardening.conf: contains: matches expectation: ["/^PermitRootLogin no$/","/^PasswordAuthentication no$/","/^PermitEmptyPasswords no$/","/^PermitUserEnvironment no$/","/^IgnoreRhosts yes$/","/^HostbasedAuthentication no$/","/^X11Forwarding no$/","/^AllowTcpForwarding no$/","/^MaxAuthTries 4$/","/^Banner \\/etc\\/issue.net$/"]
+==> linux.qemu.linux: File: /etc/at.deny: exists: matches expectation: false
+==> linux.qemu.linux: File: /etc/cron.deny: exists: matches expectation: false
+==> linux.qemu.linux: File: /etc/audit/rules.d/99-cis.rules: exists: matches expectation: true
+==> linux.qemu.linux: File: /etc/audit/rules.d/99-cis.rules: mode: matches expectation: "0640"
+==> linux.qemu.linux: File: /etc/audit/rules.d/99-cis.rules: owner: matches expectation: "root"
+==> linux.qemu.linux: File: /etc/audit/rules.d/99-cis.rules: group: matches expectation: "root"
+==> linux.qemu.linux: File: /etc/audit/rules.d/99-cis.rules: contains: matches expectation: ["/-w \\/etc\\/passwd -p wa -k identity/","/-w \\/etc\\/shadow -p wa -k identity/","/-w \\/etc\\/sudoers -p wa -k identity/","/-w \\/usr\\/bin\\/sudo -p x -k privileged/","!/^-e 2$/"]
+==> linux.qemu.linux: File: /etc/sysctl.d/99-cis.conf: exists: matches expectation: true
+==> linux.qemu.linux: File: /etc/sysctl.d/99-cis.conf: mode: matches expectation: "0644"
+==> linux.qemu.linux: File: /etc/sysctl.d/99-cis.conf: owner: matches expectation: "root"
+==> linux.qemu.linux: File: /etc/sysctl.d/99-cis.conf: group: matches expectation: "root"
+==> linux.qemu.linux: File: /etc/at.allow: exists: matches expectation: true
+==> linux.qemu.linux: File: /etc/at.allow: mode: matches expectation: "0600"
+==> linux.qemu.linux: File: /etc/at.allow: owner: matches expectation: "root"
+==> linux.qemu.linux: File: /etc/at.allow: group: matches expectation: "root"
+==> linux.qemu.linux: File: /var/log/audit: exists: matches expectation: true
+==> linux.qemu.linux: File: /var/log/audit: mode: matches expectation: "0700"
+==> linux.qemu.linux: File: /var/log/audit: owner: matches expectation: "root"
+==> linux.qemu.linux: File: /var/log/audit: group: matches expectation: "root"
+==> linux.qemu.linux: File: /var/log/audit: filetype: matches expectation: "directory"
+==> linux.qemu.linux: User: root: exists: matches expectation: true
+==> linux.qemu.linux: User: root: uid: matches expectation: 0
+==> linux.qemu.linux: User: root: gid: matches expectation: 0
+==> linux.qemu.linux: User: root: home: matches expectation: "/root"
+==> linux.qemu.linux: Command: sysctl-tcp-syncookies: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: sysctl-tcp-syncookies: stdout: matches expectation: ["1"]
+==> linux.qemu.linux: Package: sudo: installed: matches expectation: true
+==> linux.qemu.linux: Command: image-build-info-records-mac-system: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: image-build-info-records-mac-system: stdout: matches expectation: ["selinux"]
+==> linux.qemu.linux: Package: telnet: installed: matches expectation: false
+==> linux.qemu.linux: Package: talk: installed: matches expectation: false
+==> linux.qemu.linux: Package: tftp: installed: matches expectation: false
+==> linux.qemu.linux: Package: openssh-server: installed: matches expectation: true
+==> linux.qemu.linux: Package: audit: installed: matches expectation: true
+==> linux.qemu.linux: Package: python3-libselinux: installed: matches expectation: true
+==> linux.qemu.linux: Package: rsh: installed: matches expectation: false
+==> linux.qemu.linux: Package: firewalld: installed: matches expectation: true
+==> linux.qemu.linux: Service: sshd: enabled: matches expectation: true
+==> linux.qemu.linux: Service: sshd: running: matches expectation: true
+==> linux.qemu.linux: Service: auditd: enabled: matches expectation: true
+==> linux.qemu.linux: Service: auditd: running: matches expectation: true
+==> linux.qemu.linux: Service: firewalld: enabled: matches expectation: true
+==> linux.qemu.linux: Service: firewalld: running: matches expectation: true
+==> linux.qemu.linux: Service: chronyd: enabled: matches expectation: true
+==> linux.qemu.linux: Service: chronyd: running: matches expectation: true
+==> linux.qemu.linux: Command: firewall-active: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: firewall-active: stdout: matches expectation: ["FIREWALL_ACTIVE"]
+==> linux.qemu.linux: Command: firewalld-default-zone-drops: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: firewalld-default-zone-drops: stdout: matches expectation: ["DROP"]
+==> linux.qemu.linux: Command: firewalld-ssh-permitted: exit-status: matches expectation: 0
+==> linux.qemu.linux: Command: firewalld-ssh-permitted: stdout: matches expectation: ["/ssh/"]
+==> linux.qemu.linux:
+==> linux.qemu.linux:
+==> linux.qemu.linux: Total Duration: 0.317s
+==> linux.qemu.linux: Count: 140, Failed: 0, Skipped: 0
+==> linux.qemu.linux: Downloading /tmp/goss-report.json => builds/goss-rocky9-0.1.0.json
 ==> linux.qemu.linux: Gracefully halting virtual machine...
 ==> linux.qemu.linux: Converting hard drive...
 ==> linux.qemu.linux: Running post-processor:  (type manifest)
-Build 'linux.qemu.linux' finished after 9 minutes 30 seconds.
+Build 'linux.qemu.linux' finished after 14 minutes 56 seconds.
 
-==> Wait completed after 9 minutes 30 seconds
+==> Wait completed after 14 minutes 56 seconds
 
 ==> Builds finished. The artifacts of successful builds are:
 --> linux.qemu.linux: VM files in directory: builds/qemu-rocky9-0.1.0

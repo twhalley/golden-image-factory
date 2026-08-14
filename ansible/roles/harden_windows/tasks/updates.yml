@@ -1,0 +1,42 @@
+---
+# Bring the image to current patch level at build time.
+#
+# This is the slowest step in the whole repo by a wide margin — frequently 20-40
+# minutes on evaluation media that is several years old — and it reboots at
+# least once. It is first precisely so that everything after it survives.
+
+- name: Install Windows Updates
+  ansible.windows.win_updates:
+    category_names: "{{ harden_windows_update_categories }}"
+    reboot: "{{ harden_windows_update_reboot }}"
+    reboot_timeout: 3600
+  register: harden_windows_update_result
+  when: harden_windows_run_updates
+
+- name: Report what was installed
+  # Recorded in the build log so the compliance artefact can state the patch
+  # level the image was published at, rather than "updates were run".
+  ansible.builtin.debug:
+    msg: >-
+      Installed {{ harden_windows_update_result.installed_update_count | default(0) }}
+      update(s); {{ harden_windows_update_result.failed_update_count | default(0) }} failed;
+      reboot required: {{ harden_windows_update_result.reboot_required | default(false) }}
+  when: harden_windows_run_updates
+
+- name: Fail if any update failed to install
+  # A golden image published with a failed security update is worse than one
+  # published without the update, because the manifest will claim it is current.
+  ansible.builtin.assert:
+    that:
+      - (harden_windows_update_result.failed_update_count | default(0)) == 0
+    fail_msg: >-
+      {{ harden_windows_update_result.failed_update_count }} update(s) failed to
+      install. The image would claim a patch level it does not have.
+  when: harden_windows_run_updates
+
+- name: Reboot if the update run still requires it
+  ansible.windows.win_reboot:
+    reboot_timeout: 3600
+  when:
+    - harden_windows_run_updates
+    - harden_windows_update_result.reboot_required | default(false)

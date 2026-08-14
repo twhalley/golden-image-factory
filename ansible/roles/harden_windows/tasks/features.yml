@@ -1,0 +1,62 @@
+---
+# CIS 18.x — features and services.
+
+- name: 18.3.1 | Remove SMBv1 as a Windows feature
+  # REMOVED, not disabled. The registry switch (SMB1 = 0) leaves the driver
+  # installed and one registry edit away from working again; removing the feature
+  # takes the binaries off the image. This is the control WannaCry and NotPetya
+  # made famous and it is still the first thing an auditor looks for.
+  ansible.windows.win_feature:
+    name: "{{ harden_windows_remove_features }}"
+    state: absent
+  register: harden_windows_feature_result
+
+- name: Reboot if feature removal requires it
+  ansible.windows.win_reboot:
+    reboot_timeout: 3600
+  when: harden_windows_feature_result.reboot_required | default(false)
+
+- name: 18.3.1 | Belt and braces — disable the SMBv1 client driver
+  # The feature removal above handles the server. This covers the client-side
+  # driver, whose start type survives independently.
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Services\mrxsmb10
+    name: Start
+    data: 4
+    type: dword
+  failed_when: false
+
+- name: 5.x | Disable and stop unnecessary services
+  ansible.windows.win_service:
+    name: "{{ item }}"
+    start_mode: disabled
+    state: stopped
+  loop: "{{ harden_windows_disable_services }}"
+  # Server Core legitimately lacks several of these; a missing service is not a
+  # failure, but it is reported rather than silently skipped.
+  register: harden_windows_service_result
+  failed_when: false
+
+- name: 5.x | Report services that were not present
+  ansible.builtin.debug:
+    msg: "{{ item.item }} was not present on this image; nothing to disable."
+  loop: "{{ harden_windows_service_result.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.failed | default(false)
+
+- name: 18.9.x | Disable AutoRun and AutoPlay
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer
+    name: NoDriveTypeAutoRun
+    data: 255
+    type: dword
+
+- name: 18.9.x | Disable the Windows Installer AlwaysInstallElevated privilege escalation
+  # If both the machine and user keys are set, any user can install an MSI as
+  # SYSTEM. It is off by default and set explicitly so the image can be audited.
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer
+    name: AlwaysInstallElevated
+    data: 0
+    type: dword

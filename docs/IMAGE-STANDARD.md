@@ -17,8 +17,20 @@ there is a test for it; if there is no test, the control is not claimed.** That 
 file the contract between what the factory says it produces and what it demonstrably does,
 rather than a description of intent.
 
-Phase 1 predates the test suite, so nothing below is claimed as *verified* yet. It is
-claimed as *specified*. The distinction disappears at phase 4.
+**As of phase 4 the Linux claims are verified**: the goss suite runs inside the guest before
+shutdown and a failing assertion fails the build. Rocky 9 passes 140 assertions and
+Ubuntu 24.04 passes 140, both with zero failures, on every build.
+
+The Windows claims are **specified but not verified** — the Pester suite exists and has
+never run, because the Windows image does not currently build
+([ADR-0019](DECISIONS.md#adr-0019)). Anything below marked Windows-only should be read as
+intent, not as evidence.
+
+Three things this suite deliberately does NOT assert, because they are only true after the
+finalisation script runs at shutdown: the build account's removal, the SSH host key and
+machine-id wipe, and cloud-init's state being cleared. They are verified against the
+artefact offline. Claiming them in-guest would mean weakening them into assertions that
+pass without meaning anything.
 
 ---
 

@@ -1,0 +1,74 @@
+---
+# Stage everything sysprep will need, and record what this image is.
+#
+# Sysprep itself is NOT run here — it is Packer's shutdown_command. Running it
+# from a task would sever Ansible's connection mid-play and leave the build
+# unable to report its own result, the same shape of problem as removing the
+# Linux build account from a provisioner (ADR-0015).
+
+- name: Ensure the Panther directory exists
+  ansible.windows.win_file:
+    path: C:\Windows\Panther
+    state: directory
+
+- name: Stage the sysprep answer file
+  # This is what the generalised image uses on FIRST BOOT AT THE DESTINATION —
+  # a different file from the Autounattend.xml that drove the build. Getting
+  # these two confused is the classic sysprep mistake: the build answer file
+  # contains the build password and auto-logon, and shipping it inside the image
+  # would bake both into every VM created from it.
+  ansible.windows.win_template:
+    src: unattend-sysprep.xml.j2
+    dest: C:\Windows\Panther\unattend-sysprep.xml
+
+- name: Record image identity and hardening metadata
+  # The Windows equivalent of /etc/image-build-info. Same keys, so phase 5's
+  # catalogue and phase 4's test suites read one shape across all three images.
+  ansible.windows.win_copy:
+    dest: C:\Windows\image-build-info.txt
+    content: |
+      IMAGE_NAME={{ image_name | default('windows2022') }}
+      IMAGE_VERSION={{ image_version | default('0.1.0') }}
+      GIT_COMMIT={{ git_commit | default('unknown') }}
+      SOURCE_ISO_CHECKSUM={{ source_iso_checksum | default('unknown') }}
+      BUILD_DATE={{ ansible_date_time.iso8601 | default('unknown') }}
+      BUILDER={{ builder_name | default('unknown') }}
+      HARDENED=true
+      HARDENING_ROLE=harden_windows
+      HARDENING_BASELINE=CIS Microsoft Windows Server 2022 v2.0.0 (selected subset)
+      LICENSING=evaluation
+      EVALUATION_EXPIRES_DAYS=180
+    # LICENSING and EVALUATION_EXPIRES_DAYS are here so that a running VM can
+    # answer "am I licensed?" without reference to the docs. An image built from
+    # evaluation media must never be mistaken for production-ready.
+
+- name: Clean up build artefacts before generalisation
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'SilentlyContinue'
+
+    # The WinRM bootstrap transcript, which records the build configuration.
+    Remove-Item -Path 'C:\Windows\Temp\*' -Recurse -Force
+
+    # Windows Update download cache — often several GB, all of it redundant once
+    # the updates are installed. Reclaimed before the artefact is written.
+    Stop-Service -Name wuauserv -Force
+    Remove-Item -Path 'C:\Windows\SoftwareDistribution\Download\*' -Recurse -Force
+    Start-Service -Name wuauserv
+
+    # Panther logs from the build's own unattended install, which contain the
+    # build answer file's contents including the password.
+    Remove-Item -Path 'C:\Windows\Panther\unattend.xml' -Force
+    Remove-Item -Path 'C:\Windows\Panther\UnattendGC\*' -Recurse -Force
+
+    # Event logs written during the build.
+    wevtutil el | ForEach-Object { wevtutil cl "$_" 2>$null }
+  changed_when: true
+
+- name: Defragment and zero free space
+  # Windows has no fstrim. Optimize-Volume with -ReTrim issues the equivalent on
+  # a thin-provisioned or sparse disk, so the artefact does not carry deleted
+  # data — including the update cache just removed above.
+  ansible.windows.win_shell: |
+    Optimize-Volume -DriveLetter C -Defrag -ReTrim -Verbose
+  changed_when: true
+  failed_when: false

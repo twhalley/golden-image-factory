@@ -1,0 +1,67 @@
+---
+# TLS and cryptography.
+#
+# Windows exposes protocol enablement through SCHANNEL registry keys, separately
+# for the Client and Server roles. Both halves are needed: disabling the server
+# side only stops the machine ACCEPTING an old protocol, not OFFERING it when it
+# acts as a client — which a server image does constantly, for updates and
+# telemetry. Half-configured SCHANNEL is a very common finding.
+#
+# This is the control most likely to break something real. Removing TLS 1.0/1.1
+# breaks legacy clients and some older .NET applications, which is why both are
+# overridable defaults and why IMAGE-STANDARD.md discusses it explicitly rather
+# than presenting it as free.
+
+- name: Disable legacy protocols — Enabled = 0
+  ansible.windows.win_regedit:
+    path: 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\{{ item.0 }}\{{ item.1 }}'
+    name: Enabled
+    data: 0
+    type: dword
+  loop: "{{ harden_windows_tls_protocols | product(['Client', 'Server']) | list }}"
+  loop_control:
+    label: "{{ item.0 }}/{{ item.1 }}"
+
+- name: Disable legacy protocols — DisabledByDefault = 1
+  # Enabled=0 stops it being used; DisabledByDefault=1 stops it being negotiated
+  # when an application asks for "system default". Setting only one of the two
+  # leaves the protocol reachable by a determined caller.
+  ansible.windows.win_regedit:
+    path: 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\{{ item.0 }}\{{ item.1 }}'
+    name: DisabledByDefault
+    data: 1
+    type: dword
+  loop: "{{ harden_windows_tls_protocols | product(['Client', 'Server']) | list }}"
+  loop_control:
+    label: "{{ item.0 }}/{{ item.1 }}"
+
+- name: Enable TLS 1.2 explicitly — Enabled = 1
+  # Enabled by default on Server 2022; set explicitly so the image standard is
+  # auditable rather than resting on a vendor default that could change.
+  ansible.windows.win_regedit:
+    path: 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\{{ item }}'
+    name: Enabled
+    data: 1
+    type: dword
+  loop: ['Client', 'Server']
+
+- name: Enable TLS 1.2 explicitly — DisabledByDefault = 0
+  ansible.windows.win_regedit:
+    path: 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\{{ item }}'
+    name: DisabledByDefault
+    data: 0
+    type: dword
+  loop: ['Client', 'Server']
+
+- name: Force .NET Framework to use the system default TLS version
+  # Without this, .NET applications pin their own protocol list and quietly keep
+  # using TLS 1.0 regardless of everything above. Both the 64-bit and the 32-bit
+  # (WOW6432Node) keys are required; setting only one is another common gap.
+  ansible.windows.win_regedit:
+    path: "{{ item }}"
+    name: SchUseStrongCrypto
+    data: 1
+    type: dword
+  loop:
+    - HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319
+    - HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v4.0.30319

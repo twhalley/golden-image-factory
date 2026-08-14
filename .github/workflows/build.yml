@@ -1,0 +1,171 @@
+---
+# The expensive gate: actually build the images and run their test suites.
+#
+# QEMU only. vmware-iso needs Workstation, vsphere-iso needs a vCenter, and
+# azure-arm spends money — none of those belong on a PR.
+name: build
+
+on:
+  pull_request:
+    paths:
+      - 'packer/**'
+      - 'ansible/**'
+      - 'tests/**'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Which image to build
+        required: false
+        default: all
+        type: choice
+        options: [all, rocky9, ubuntu2404, windows2022]
+
+permissions: {}
+
+env:
+  PACKER_VERSION: "1.16.0"
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Whether GitHub-hosted runners expose /dev/kvm is not something to assume —
+  # it has changed more than once and differs by runner image and repo
+  # visibility. This job measures it and the answer is printed in the summary, so
+  # the README can state a real number instead of implying CI builds are fast.
+  runner-capability:
+    name: check KVM availability
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      kvm: ${{ steps.check.outputs.kvm }}
+    steps:
+      - name: Check for /dev/kvm
+        id: check
+        run: |
+          set -euo pipefail
+          if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo "kvm=true" >> "$GITHUB_OUTPUT"
+            echo "### KVM available — hardware acceleration in use" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "kvm=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### No KVM on this runner — falling back to TCG software emulation"
+              echo ""
+              echo "Builds will be roughly an order of magnitude slower. This is a"
+              echo "property of the runner, not of the templates."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          ls -l /dev/kvm 2>&1 || true
+
+  linux:
+    name: build ${{ matrix.image }}
+    needs: runner-capability
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [rocky9, ubuntu2404]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install QEMU and Packer
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils
+          base="https://releases.hashicorp.com/packer/${PACKER_VERSION}"
+          curl -fsSL -o packer.zip "${base}/packer_${PACKER_VERSION}_linux_amd64.zip"
+          curl -fsSL -o sums.txt "${base}/packer_${PACKER_VERSION}_SHA256SUMS"
+          grep "linux_amd64.zip" sums.txt \
+            | sed "s|packer_${PACKER_VERSION}_linux_amd64.zip|packer.zip|" \
+            | sha256sum -c -
+          unzip -q packer.zip && sudo install -m 0755 packer /usr/local/bin/packer
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: |
+          set -euo pipefail
+          pip install --disable-pip-version-check "ansible-core==2.21.3"
+          ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: Build ${{ matrix.image }}
+        env:
+          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          eval "$(scripts/make-build-key.sh)"
+          packer init packer/linux
+
+          # accelerator is forced to "none" when the runner has no KVM. Without
+          # this Packer asks for KVM, QEMU refuses, and the failure looks like a
+          # template error rather than a missing device.
+          extra=()
+          if [ "${{ needs.runner-capability.outputs.kvm }}" != "true" ]; then
+            extra+=(-var "accelerator=none")
+          fi
+
+          packer build -only='linux.qemu.linux' \
+            -var-file="packer/linux/${{ matrix.image }}.pkrvars.hcl" \
+            -var "git_commit=${GITHUB_SHA::7}" \
+            "${extra[@]}" \
+            packer/linux
+
+      - name: Upload the compliance report
+        # The report is the artefact that matters on a PR — the qcow2 is several
+        # GB and nobody downloads it, but "what did the tests say" is the whole
+        # question. Phase 7 signs this file.
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: compliance-${{ matrix.image }}
+          path: |
+            builds/goss-*.json
+            builds/manifest.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Summarise the compliance report
+        if: always()
+        run: |
+          set -euo pipefail
+          report=$(ls builds/goss-*.json 2>/dev/null | head -1 || true)
+          if [ -z "${report}" ]; then
+            echo "No compliance report produced — the build failed before the test gate." \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### ${{ matrix.image }} compliance"
+            echo ""
+            python3 - "${report}" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          s = d.get('summary', {})
+          print(f"- Assertions: **{s.get('test-count', '?')}**")
+          print(f"- Failures: **{s.get('failed-count', '?')}**")
+          print(f"- Duration: {s.get('total-duration', 0) / 1e9:.1f}s")
+          for r in d.get('results', []):
+              if not r.get('successful', True):
+                  print(f"  - FAILED: `{r.get('resource-id')}` — {r.get('human')}")
+          PY
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # windows2022 is deliberately absent from the matrix.
+  #
+  # Its templates, hardening role and Pester suite are written and validated, but
+  # Windows Setup does not currently pick up the answer file on this builder — see
+  # evidence/windows-autounattend-not-detected-2026-08-14.md. Adding a job that
+  # cannot pass would turn a known, documented gap into a permanently red check
+  # that people learn to ignore, which is worse than the gap.

@@ -1,0 +1,58 @@
+---
+# harden_windows — CIS Microsoft Windows Server 2022 Benchmark Level 1, selected
+# subset.
+#
+# ORDERING IS THE WHOLE GAME on Windows, far more than on Linux, because sysprep
+# generalises the machine afterwards and anything done in the wrong order is
+# either undone or prevents sysprep running at all. The order below is:
+#
+#   1. Windows Update      — first, because it reboots and everything after must
+#                            survive that
+#   2. Features/services   — feature removal also reboots
+#   3. Policy              — password, lockout, audit, TLS, event logs
+#   4. Sysprep answer file — staged, not run
+#   5. WinRM teardown      — LAST, because it severs Ansible's own connection
+#
+# Sysprep itself is Packer's shutdown_command, not a task here, for the same
+# reason the Linux build account is removed at shutdown (ADR-0015): a step cannot
+# outlive the connection it depends on.
+
+- name: Report the target
+  ansible.builtin.debug:
+    msg: >-
+      Hardening {{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version'] }}
+      ({{ ansible_facts['os_installation_type'] | default('unknown') }} installation)
+
+- name: Apply Windows Updates
+  ansible.builtin.import_tasks: updates.yml
+  tags: [updates]
+
+- name: Remove and disable unnecessary features and services
+  ansible.builtin.import_tasks: features.yml
+  tags: [features]
+
+- name: Apply account, password and lockout policy
+  ansible.builtin.import_tasks: policy.yml
+  tags: [policy]
+
+- name: Apply TLS and cryptography settings
+  ansible.builtin.import_tasks: tls.yml
+  tags: [tls]
+
+- name: Apply audit policy and event log sizing
+  ansible.builtin.import_tasks: audit.yml
+  tags: [audit]
+
+- name: Apply firewall and RDP settings
+  ansible.builtin.import_tasks: firewall.yml
+  tags: [firewall]
+
+- name: Stage the sysprep answer file and image metadata
+  ansible.builtin.import_tasks: finalize.yml
+  tags: [finalize]
+
+# LAST. This removes the transport Ansible is using, so nothing can run after it.
+- name: Tear down the build's WinRM configuration
+  ansible.builtin.import_tasks: winrm_teardown.yml
+  tags: [winrm]

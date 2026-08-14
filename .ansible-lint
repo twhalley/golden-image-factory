@@ -1,0 +1,17 @@
+---
+# ansible-lint scans every YAML file it can find, which in this repo means it also
+# picks up the goss suites under tests/ and the GitHub workflows — neither of
+# which is Ansible, and both of which it then reports style violations against
+# using rules that do not apply to them.
+#
+# Scoping it to ansible/ is not a way of hiding failures: yamllint runs
+# --strict over the whole repository including these paths, and the goss suites
+# are validated by goss itself on every build.
+profile: production
+
+exclude_paths:
+  - .github/
+  - evidence/
+  - tests/goss/
+  - .build-keys/
+  - builds/

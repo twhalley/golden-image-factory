@@ -1,0 +1,187 @@
+---
+# Fast feedback on every PR. Everything here runs in under two minutes and needs
+# no VM — the expensive matrix build is build.yml.
+name: lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  PACKER_VERSION: "1.16.0"
+  TERRAFORM_VERSION: "1.15.8"
+  TFLINT_VERSION: "0.64.0"
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  packer:
+    name: packer fmt and validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Packer (pinned)
+        run: |
+          set -euo pipefail
+          base="https://releases.hashicorp.com/packer/${PACKER_VERSION}"
+          curl -fsSL -o packer.zip "${base}/packer_${PACKER_VERSION}_linux_amd64.zip"
+          curl -fsSL -o sums.txt "${base}/packer_${PACKER_VERSION}_SHA256SUMS"
+          grep "linux_amd64.zip" sums.txt \
+            | sed "s|packer_${PACKER_VERSION}_linux_amd64.zip|packer.zip|" \
+            | sha256sum -c -
+          unzip -q packer.zip && sudo install -m 0755 packer /usr/local/bin/packer
+
+      - name: packer fmt -check
+        run: packer fmt -check -diff -recursive packer/
+
+      - name: Validate every OS variable file against every source
+        env:
+          # packer init resolves plugin versions through the GitHub API, rate
+          # limited to 60/hour for anonymous callers and shared across the
+          # runner's egress IP. Without this it fails intermittently, with two of
+          # five plugins installed and the rest 403 — which reads like a broken
+          # template rather than a quota.
+          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
+          # Windows has no key-based equivalent to the Linux ephemeral SSH key,
+          # so validate needs a password that satisfies the variable's own
+          # length validation. Structurally valid, useless, and thrown away.
+          PKR_VAR_winrm_password: "ci-validate-only-not-a-real-password"
+        run: |
+          set -euo pipefail
+          eval "$(scripts/make-build-key.sh)"
+
+          packer init packer/linux
+          for varfile in packer/linux/*.pkrvars.hcl; do
+            echo "::group::linux: $(basename "${varfile}")"
+            packer validate -var-file="${varfile}" packer/linux
+            echo "::endgroup::"
+          done
+
+          # The Windows templates carry their defaults inline rather than in a
+          # variable file, so there is nothing to iterate over.
+          packer init packer/windows
+          echo "::group::windows"
+          packer validate packer/windows
+          echo "::endgroup::"
+
+  ansible:
+    name: ansible-lint
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible-lint and collections
+        run: |
+          set -euo pipefail
+          pip install --disable-pip-version-check "ansible-lint==26.8.0" "ansible-core==2.21.3"
+          # Collections must be resolvable or ansible-lint cannot validate module
+          # arguments at all — it degrades to checking YAML shape and reports a
+          # pass that means much less than it appears to.
+          ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: ansible-lint
+        # Production profile. The role is clean at it; dropping to a lower
+        # profile to make a failure go away would be exactly the wrong move.
+        run: ansible-lint ansible/
+
+  terraform:
+    name: terraform fmt and tflint
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Skip while terraform/ has no configuration
+        id: guard
+        run: |
+          set -euo pipefail
+          if compgen -G "terraform/**/*.tf" > /dev/null; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Terraform configuration yet — that is phase 5."
+          fi
+        shell: bash
+
+      - name: Install Terraform and tflint (pinned)
+        if: steps.guard.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          curl -fsSL -o tf.zip \
+            "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+          unzip -q tf.zip && sudo install -m 0755 terraform /usr/local/bin/terraform
+          curl -fsSL -o tflint.zip \
+            "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/tflint_linux_amd64.zip"
+          unzip -q tflint.zip && sudo install -m 0755 tflint /usr/local/bin/tflint
+
+      - name: terraform fmt -check
+        if: steps.guard.outputs.present == 'true'
+        run: terraform fmt -check -recursive terraform/
+
+      - name: tflint
+        if: steps.guard.outputs.present == 'true'
+        run: tflint --recursive --chdir=terraform/
+
+  yaml:
+    name: yamllint
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - run: pip install --disable-pip-version-check "yamllint==1.38.0"
+      - run: yamllint --strict .
+
+  powershell:
+    name: PSScriptAnalyzer
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Analyse PowerShell
+        # The Linux side gets shellcheck via pre-commit and ansible-lint in CI;
+        # without this the Windows scripts and the Pester suite would be the only
+        # code in the repo with no static analysis at all.
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.24.0 -Force -Scope CurrentUser
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error, Warning
+          if ($results) {
+            $results | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+            throw "PSScriptAnalyzer reported $($results.Count) issue(s)"
+          }
+          Write-Host 'PSScriptAnalyzer clean'

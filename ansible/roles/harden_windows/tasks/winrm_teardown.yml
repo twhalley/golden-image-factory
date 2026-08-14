@@ -1,0 +1,94 @@
+---
+# WinRM teardown — staged here, EXECUTED at shutdown.
+#
+# THE ORDERING PROBLEM, and it is the same shape as the Linux build account
+# (ADR-0015) but sharper.
+#
+# The build configured WinRM over HTTP with Basic authentication and
+# AllowUnencrypted, because that is what Packer needs to reach a freshly
+# installed Windows machine. Every one of those settings would be a serious
+# finding in a published image: a network listener accepting plaintext
+# credentials.
+#
+# It cannot be torn down from a task, because Packer's next action is
+# `shutdown_command` — and that runs over WinRM. Disabling the transport from a
+# provisioner means sysprep never runs, the image is never generalised, and the
+# build fails having done everything else correctly.
+#
+# So the teardown and sysprep are one script, invoked as the shutdown command.
+# The script runs, severs its own transport, and powers the machine off in the
+# generalised state; nothing needs to survive its own effects.
+#
+# CONSEQUENCE, stated rather than glossed: phase 4's Pester suite runs in-guest
+# BEFORE this, so it cannot assert that WinRM is disabled — at the moment it
+# runs, WinRM is still up and still required. What Pester asserts instead is that
+# the finalisation script exists and contains the teardown; the end state is
+# verified against the artefact offline. See ADR-0017.
+
+- name: Stage the image finalisation script
+  ansible.windows.win_copy:
+    dest: C:\Windows\image-finalize.ps1
+    content: |
+      # Managed by harden_windows. Invoked by Packer's shutdown_command.
+      #
+      # Tears down the build's WinRM configuration and then generalises the
+      # machine. Runs as the last thing that ever happens on this VM.
+      $ErrorActionPreference = 'SilentlyContinue'
+      Start-Transcript -Path 'C:\Windows\Panther\finalize.log' -Append | Out-Null
+
+      Write-Output 'Reversing build-time WinRM configuration...'
+
+      # Reverse the permissive settings first, so that even if the service is
+      # re-enabled at the destination it does not come back in this state.
+      winrm set winrm/config/service '@{AllowUnencrypted="false"}'
+      winrm set winrm/config/service/auth '@{Basic="false"}'
+      winrm set winrm/config/client/auth '@{Basic="false"}'
+
+      # Remove the listener and both the custom and built-in firewall rules.
+      Remove-Item -Path WSMan:\localhost\Listener\* -Recurse -Force
+      Remove-NetFirewallRule -Name 'WinRM-HTTP-Build'
+      Disable-NetFirewallRule -DisplayGroup 'Windows Remote Management'
+
+      # Stop and disable the service. A deployment that wants WinRM configures it
+      # deliberately, over HTTPS, with a real certificate.
+      Stop-Service -Name WinRM -Force
+      Set-Service -Name WinRM -StartupType Disabled
+
+      # The bootstrap transcript records the configuration just torn down.
+      Remove-Item -Path 'C:\Windows\Temp\enable-winrm.log' -Force
+
+      Stop-Transcript | Out-Null
+
+      Write-Output 'Running sysprep...'
+      # /generalize strips the SID, machine name and driver state.
+      # /oobe boots to the out-of-box experience at the destination.
+      # /shutdown powers off IN the generalised state — /reboot would boot once
+      #   more and run specialize, undoing generalisation.
+      # /mode:vm skips hardware detection reset that is pointless on a hypervisor.
+      & 'C:\Windows\System32\Sysprep\sysprep.exe' `
+        /generalize /oobe /shutdown /quiet /mode:vm `
+        /unattend:C:\Windows\Panther\unattend-sysprep.xml
+  when: harden_windows_teardown_winrm
+
+- name: Verify the finalisation script was written and contains the teardown
+  # The script's effects cannot be checked from here — it has not run, and once
+  # it does there is nothing left to ask. What CAN be checked is that it exists
+  # and says what it should, which is what Pester asserts too.
+  ansible.windows.win_shell: |
+    $p = 'C:\Windows\image-finalize.ps1'
+    if (-not (Test-Path $p)) { Write-Error 'finalisation script missing'; exit 1 }
+    $c = Get-Content $p -Raw
+    foreach ($needle in @('AllowUnencrypted="false"', 'Set-Service -Name WinRM -StartupType Disabled', '/generalize')) {
+      if ($c -notmatch [regex]::Escape($needle)) { Write-Error "missing: $needle"; exit 1 }
+    }
+    Write-Output 'finalisation script verified'
+  register: harden_windows_finalize_check
+  changed_when: false
+  when: harden_windows_teardown_winrm
+
+- name: Report the finalisation contract
+  ansible.builtin.debug:
+    msg: >-
+      {{ harden_windows_finalize_check.stdout | default('') | trim }}.
+      WinRM teardown and sysprep run next, as Packer's shutdown command.
+  when: harden_windows_teardown_winrm

@@ -1,0 +1,100 @@
+---
+# harden_windows — tunable defaults.
+#
+# Scoped to CIS Microsoft Windows Server 2022 Benchmark Level 1, selected subset.
+# As with harden_linux, the controls deliberately NOT applied are listed with
+# reasons in docs/IMAGE-STANDARD.md, and that table is the substantive half.
+
+# --- Windows Update ---------------------------------------------------------
+# Run to current at build time. What keeps the image current is the monthly
+# scheduled rebuild in phase 6, not this.
+harden_windows_run_updates: true
+harden_windows_update_categories:
+  - SecurityUpdates
+  - CriticalUpdates
+  - UpdateRollups
+
+# Reboots during the update pass are expected and necessary. Ansible reconnects.
+harden_windows_update_reboot: true
+
+# --- TLS --------------------------------------------------------------------
+# Server 2022 already disables SSL 2.0/3.0 by default; they are set explicitly so
+# the image standard can be audited rather than assumed. TLS 1.0 and 1.1 are
+# disabled — this is the control most likely to break a legacy client, and it is
+# overridable for exactly that reason.
+harden_windows_disable_tls_10: true
+harden_windows_disable_tls_11: true
+harden_windows_disable_ssl_30: true
+
+# Built from the three switches above. SSL 2.0 is always included: there is no
+# defensible reason to leave it enabled and no client that still needs it.
+harden_windows_tls_protocols: >-
+  {{ ['SSL 2.0']
+     + (['SSL 3.0'] if harden_windows_disable_ssl_30 else [])
+     + (['TLS 1.0'] if harden_windows_disable_tls_10 else [])
+     + (['TLS 1.1'] if harden_windows_disable_tls_11 else []) }}
+
+# --- Features and services --------------------------------------------------
+# SMBv1 is removed as a Windows FEATURE, not merely disabled. The registry switch
+# leaves the driver installed and re-enableable; removing the feature does not.
+harden_windows_remove_features:
+  - FS-SMB1
+
+harden_windows_disable_services:
+  # Print Spooler — PrintNightmare, and a server image has no printers.
+  - Spooler
+  # Remote Registry — a remote code path nothing on a server image needs.
+  - RemoteRegistry
+  # Xbox and telemetry-adjacent services that Server Core still carries stubs for.
+  - XblAuthManager
+  - XblGameSave
+
+# --- Password and lockout policy -------------------------------------------
+# Mirrors harden_linux's numbers so the two families make the same claim.
+harden_windows_password_min_length: 14
+harden_windows_password_max_age: 365
+harden_windows_password_min_age: 1
+harden_windows_password_history: 24
+harden_windows_lockout_threshold: 5
+harden_windows_lockout_duration: 15
+harden_windows_lockout_window: 15
+
+# --- Audit policy -----------------------------------------------------------
+# Subcategories rather than the legacy nine categories: the legacy settings are
+# coarse and are overridden by subcategory settings anyway when both are present.
+harden_windows_audit_policies:
+  - {subcategory: "Logon", success: true, failure: true}
+  - {subcategory: "Logoff", success: true, failure: false}
+  - {subcategory: "Account Lockout", success: false, failure: true}
+  - {subcategory: "Special Logon", success: true, failure: false}
+  - {subcategory: "User Account Management", success: true, failure: true}
+  - {subcategory: "Security Group Management", success: true, failure: true}
+  - {subcategory: "Process Creation", success: true, failure: false}
+  - {subcategory: "Audit Policy Change", success: true, failure: true}
+  - {subcategory: "Authentication Policy Change", success: true, failure: false}
+  - {subcategory: "Sensitive Privilege Use", success: true, failure: true}
+  - {subcategory: "Security System Extension", success: true, failure: false}
+  - {subcategory: "System Integrity", success: true, failure: true}
+
+# --- Event log sizing -------------------------------------------------------
+# Windows has no per-filesystem mount options, so the Linux approach of giving
+# /var/log/audit its own volume has no equivalent. Bounding the logs is what
+# replaces it. See IMAGE-STANDARD.md on why the disk is not partitioned.
+harden_windows_eventlog_max_size_mb:
+  Application: 64
+  Security: 196
+  System: 64
+
+# --- RDP --------------------------------------------------------------------
+# Left enabled with NLA required. Disabling RDP entirely in the image is
+# tempting and wrong: it is the only interactive recovery path on a Windows VM
+# whose network configuration has gone wrong, and a team that needs it will
+# re-enable it by a route nobody reviews.
+harden_windows_rdp_enabled: true
+harden_windows_rdp_require_nla: true
+
+# --- WinRM teardown ---------------------------------------------------------
+# The build's WinRM configuration is deliberately permissive (HTTP, Basic,
+# unencrypted) and MUST NOT survive into the image. This is the single most
+# important control in the role — see ADR-0017 — and the Pester suite asserts it.
+harden_windows_teardown_winrm: true

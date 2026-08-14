@@ -1,0 +1,50 @@
+---
+# Applied by Packer's ansible provisioner during the Windows build.
+#
+# Deliberately the same shape as linux-harden.yml — same structure, same
+# reporting, same post-check pattern — so that one reviewer can read both and one
+# CI job can lint both. The controls differ because the platforms differ; the way
+# they are expressed does not.
+
+- name: Harden Windows Server golden image
+  hosts: all
+  gather_facts: true
+
+  vars:
+    # Passed through from Packer so the in-image metadata file matches
+    # manifest.json. Defaults keep the playbook runnable outside a build.
+    image_name: "{{ packer_image_name | default('windows2022') }}"
+    image_version: "{{ packer_image_version | default('0.1.0') }}"
+    git_commit: "{{ packer_git_commit | default('unknown') }}"
+    source_iso_checksum: "{{ packer_iso_checksum | default('unknown') }}"
+    builder_name: "{{ packer_builder_type | default('unknown') }}"
+
+  pre_tasks:
+    - name: Report what is being hardened
+      ansible.builtin.debug:
+        msg: >-
+          Hardening {{ ansible_facts['distribution'] }}
+          {{ ansible_facts['distribution_version'] }} —
+          installation type {{ ansible_facts['os_installation_type'] | default('unknown') }}.
+
+    - name: Confirm this is a Server SKU
+      # A Windows client SKU would silently accept most of this role and produce
+      # something that is not a server image at all. Cheap to check, expensive to
+      # discover later.
+      ansible.builtin.assert:
+        that:
+          - "'Server' in ansible_facts['distribution']"
+        fail_msg: >-
+          Expected a Windows Server SKU, found
+          '{{ ansible_facts['distribution'] }}'. harden_windows targets
+          Server 2022.
+
+  roles:
+    - role: harden_windows
+
+  # No post_tasks that touch the machine.
+  #
+  # The role's last action stages the finalisation script, and Packer's shutdown
+  # command runs it — tearing down WinRM and generalising. Anything added here
+  # would run after the teardown was staged but before it executed, which is a
+  # confusing place for a control to live. If it matters, it belongs in the role.

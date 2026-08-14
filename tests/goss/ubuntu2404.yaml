@@ -1,0 +1,95 @@
+---
+# goss — Ubuntu 24.04 specifics.
+#
+# Included alongside shared.yaml. Only genuine Debian-family divergence belongs
+# here.
+
+gossfile:
+  shared.yaml: {}
+
+package:
+  # Debian-family names for the legacy clients CIS 2.3 requires removed.
+  rsh-client:
+    installed: false
+  talk:
+    installed: false
+  tftp:
+    installed: false
+
+  auditd:
+    installed: true
+  ufw:
+    installed: true
+
+service:
+  # `ssh` on Debian, not `sshd` — see the note in shared.yaml.
+  #
+  # And Ubuntu 24.04 SOCKET-ACTIVATES it: ssh.socket is enabled, and ssh.service
+  # is started on demand by the first connection. So `ssh` reports
+  # enabled=false on a completely healthy system, and asserting enabled=true
+  # against it fails for a reason that has nothing to do with hardening.
+  #
+  # Enablement is therefore asserted against the socket and liveness against the
+  # service. Rocky 9 has no socket unit and enables sshd directly.
+  ssh.socket:
+    enabled: true
+  ssh:
+    running: true
+  ufw:
+    enabled: true
+    running: true
+  chrony:
+    enabled: true
+    running: true
+
+command:
+  # Asserted as a command, NOT as another `file:` block for
+  # /etc/image-build-info. goss merges gossfiles by key, so a second file block
+  # for the same path REPLACES the one in shared.yaml rather than adding to it —
+  # it warns ("Duplicate key detected ... has overwritten the previous value")
+  # and silently drops six assertions. Worth knowing before splitting any suite.
+  image-build-info-records-mac-system:
+    exec: "grep -E '^MAC_SYSTEM=' /etc/image-build-info | cut -d= -f2"
+    exit-status: 0
+    stdout: ["apparmor"]
+
+  # AppArmor specifically — the counterpart to rocky9.yaml's SELinux assertion.
+  apparmor-enabled:
+    exec: "aa-enabled"
+    exit-status: 0
+    stdout: ["Yes"]
+
+  apparmor-profiles-loaded:
+    # "Enabled" with zero profiles loaded is enforcement of nothing. Asserting a
+    # non-zero profile count is what makes the claim meaningful.
+    exec: "aa-status --profiled"
+    exit-status: 0
+    stdout:
+      - "!/^0$/"
+
+  # ufw must be active with a default-deny inbound policy.
+  ufw-active:
+    exec: "ufw status verbose"
+    exit-status: 0
+    stdout:
+      - "/Status: active/"
+      - "/Default: deny \\(incoming\\)/"
+
+  ufw-ssh-permitted:
+    # As on Rocky: default deny is only correct if SSH still works.
+    exec: "ufw status"
+    exit-status: 0
+    stdout:
+      - "/22|OpenSSH/"
+
+  root-filesystem-is-ext4:
+    exec: "findmnt -no FSTYPE /"
+    exit-status: 0
+    stdout: ["ext4"]
+
+  # Ubuntu's dynamic MOTD phones home to Canonical on a timer and prints the
+  # result at login. Neither behaviour belongs in a server image.
+  motd-news-disabled:
+    exec: "grep -E '^ENABLED=' /etc/default/motd-news 2>/dev/null | cut -d= -f2 || echo 0"
+    exit-status: 0
+    stdout: ["0"]

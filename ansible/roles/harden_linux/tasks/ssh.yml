@@ -46,10 +46,23 @@
     group: root
     mode: "0755"
 
+# 00-, NOT 99-. This is the opposite of the usual drop-in convention and it is
+# the difference between hardening that applies and hardening that does not.
+#
+# sshd takes the FIRST value it sees for most keywords, and `Include` processes
+# /etc/ssh/sshd_config.d/*.conf in lexical order. RHEL 9 ships 50-redhat.conf
+# containing `X11Forwarding yes`. A 99-prefixed drop-in is read AFTER it and
+# loses silently — the file exists, the review passes, and X11 forwarding is
+# still enabled.
+#
+# Found by phase 4's goss suite, which asserts the EFFECTIVE configuration via
+# `sshd -T` rather than the file contents: 137 of 138 assertions passed and the
+# one failure was exactly this. A suite that only checked the file would have
+# reported success.
 - name: 5.2.x | Write the hardened sshd configuration
   ansible.builtin.template:
     src: sshd_hardening.conf.j2
-    dest: /etc/ssh/sshd_config.d/99-cis-hardening.conf
+    dest: /etc/ssh/sshd_config.d/00-cis-hardening.conf
     owner: root
     group: root
     mode: "0600"

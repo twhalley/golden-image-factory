@@ -95,7 +95,7 @@ source "qemu" "linux" {
   // which case this falls back to TCG software emulation and gets much slower
   // rather than failing — phase 6 measures it and the README states the number
   // instead of implying CI builds are fast.
-  accelerator  = "kvm"
+  accelerator  = var.accelerator
   machine_type = "q35"
   cpus         = var.cpus
   memory       = var.memory

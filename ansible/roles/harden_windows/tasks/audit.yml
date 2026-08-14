@@ -1,0 +1,68 @@
+---
+# CIS 17.x — advanced audit policy, and event log sizing.
+
+- name: 17.x | Configure advanced audit policy subcategories
+  # Subcategories, not the legacy nine categories. When both are configured the
+  # subcategory settings win, so configuring the legacy ones as well would be
+  # writing settings that have no effect and look like coverage.
+  ansible.windows.win_audit_policy_system:
+    subcategory: "{{ item.subcategory }}"
+    audit_type: "{{ audit_types | join(', ') }}"
+  vars:
+    audit_types: >-
+      {{ (['success'] if item.success else []) + (['failure'] if item.failure else []) }}
+  loop: "{{ harden_windows_audit_policies }}"
+  loop_control:
+    label: "{{ item.subcategory }}"
+  when: item.success or item.failure
+
+- name: 17.x | Force audit policy subcategory settings to override category settings
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: SCENoApplyLegacyAuditPolicy
+    data: 1
+    type: dword
+
+- name: 18.x | Enable command line auditing in process creation events
+  # Without this, 4688 events record that a process started but not what it was
+  # asked to do — which is most of the value during an incident.
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
+    name: ProcessCreationIncludeCmdLine_Enabled
+    data: 1
+    type: dword
+
+- name: 18.x | Enable PowerShell script block logging
+  # The single highest-value logging control on a modern Windows host: almost all
+  # hands-on-keyboard attack tooling is PowerShell, and script block logging
+  # records it after de-obfuscation.
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
+    name: EnableScriptBlockLogging
+    data: 1
+    type: dword
+
+- name: 18.9.x | Set event log maximum sizes and retention
+  # Windows has no per-filesystem mount options, so the Linux control of giving
+  # /var/log/audit its own volume has no equivalent here. Bounding each log is
+  # what replaces it — see IMAGE-STANDARD.md on why the Windows disk is a single
+  # partition.
+  ansible.windows.win_regedit:
+    path: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\EventLog\{{ item.key }}'
+    name: MaxSize
+    data: "{{ item.value * 1024 }}"
+    type: dword
+  loop: "{{ harden_windows_eventlog_max_size_mb | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} = {{ item.value }} MB"
+
+- name: 18.9.x | Retain events by overwriting the oldest rather than halting
+  # The Windows equivalent of the auditd admin_space_left_action decision in
+  # harden_linux: a full log must not stop the machine. Same reasoning, same
+  # conclusion, recorded in both places.
+  ansible.windows.win_regedit:
+    path: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\EventLog\{{ item }}'
+    name: Retention
+    data: "0"
+    type: string
+  loop: "{{ harden_windows_eventlog_max_size_mb.keys() | list }}"
