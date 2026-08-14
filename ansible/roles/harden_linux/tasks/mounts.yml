@@ -1,0 +1,46 @@
+---
+# CIS 1.1.2 – 1.1.9 — mount options.
+#
+# This is the pay-off for the phase 1 partition layout: these options can only be
+# applied to filesystems that were created separately, which is why the installer
+# creates them and this role configures them (ADR-0011).
+#
+# /dev/shm is the exception — it is a tmpfs the kernel creates, so it needs an
+# explicit fstab entry rather than a modification to one.
+
+- name: 1.1.x | Apply nodev/nosuid/noexec to separate filesystems
+  ansible.posix.mount:
+    path: "{{ item.key }}"
+    src: "{{ ansible_facts['mounts'] | selectattr('mount', 'equalto', item.key) | map(attribute='device') | first }}"
+    fstype: "{{ ansible_facts['mounts'] | selectattr('mount', 'equalto', item.key) | map(attribute='fstype') | first }}"
+    opts: "{{ item.value }}"
+    state: mounted
+  loop: "{{ harden_linux_mount_options | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} -> {{ item.value }}"
+  # /dev/shm is handled separately below; everything else must already exist as a
+  # real mount, and a missing one means the image was built from a partition
+  # layout this role does not match, which should be loud rather than skipped.
+  when:
+    - item.key != '/dev/shm'
+    - ansible_facts['mounts'] | selectattr('mount', 'equalto', item.key) | list | length > 0
+
+- name: 1.1.x | Fail if an expected filesystem is missing
+  # The alternative is silently hardening five of six mounts and reporting
+  # success. IMAGE-STANDARD.md claims all of them.
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['mounts'] | selectattr('mount', 'equalto', item) | list | length > 0
+    fail_msg: >-
+      Expected a separate filesystem at {{ item }} and did not find one. The image
+      was built from a partition layout this role does not match — see
+      docs/IMAGE-STANDARD.md.
+  loop: "{{ harden_linux_mount_options.keys() | reject('equalto', '/dev/shm') | list }}"
+
+- name: 1.1.9 | Ensure /dev/shm is mounted nodev,nosuid,noexec
+  ansible.posix.mount:
+    path: /dev/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: "{{ harden_linux_mount_options['/dev/shm'] }}"
+    state: mounted

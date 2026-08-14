@@ -1,0 +1,51 @@
+---
+# CIS 2.1 – 2.2 — services and legacy clients.
+#
+# Packages are removed rather than merely stopped. A stopped service can be
+# started by an administrator, a dependency, or a socket unit; a package that is
+# not installed cannot.
+
+- name: 2.3.x | Remove legacy insecure clients
+  ansible.builtin.package:
+    name: "{{ harden_linux_remove_packages }}"
+    state: absent
+  # These are largely absent from a minimal install already. Removing a package
+  # that was never there is a no-op, not an error — but a genuine failure to
+  # remove one that IS present must still fail, so this is not blanket-ignored.
+
+- name: 2.2.x | Disable and mask services with no place on a server image
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+    masked: true
+  loop: "{{ harden_linux_disable_services }}"
+  # Masking a unit that does not exist is an error on some systemd versions and a
+  # no-op on others, and a minimal image legitimately lacks most of these. The
+  # result is registered and reported rather than silently swallowed.
+  register: harden_linux_service_result
+  failed_when: false
+
+- name: 2.2.x | Report services that were not present to disable
+  ansible.builtin.debug:
+    msg: "{{ item.item }} was not present on this image; nothing to disable."
+  loop: "{{ harden_linux_service_result.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.failed | default(false)
+
+- name: 2.1.1 | Ensure time synchronisation is enabled
+  # chrony rather than systemd-timesyncd on both, so there is one answer to
+  # "how does time work here" across the estate.
+  ansible.builtin.systemd:
+    name: chronyd
+    enabled: true
+    state: started
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: 2.1.1 | Ensure time synchronisation is enabled (Debian)
+  ansible.builtin.systemd:
+    name: chrony
+    enabled: true
+    state: started
+  when: ansible_facts['os_family'] == 'Debian'

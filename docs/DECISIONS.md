@@ -464,3 +464,74 @@ than implying one benchmark covers both.
 false on half the images, and the kind of claim that survives right up until someone checks.
 Building only RHEL-family images to avoid the problem — the job description names both
 families, and the divergence is the interesting part rather than an obstacle.
+
+---
+
+## ADR-0015 — The build account is removed at shutdown, not by the hardening role
+
+**Phase:** 2
+**Status:** accepted
+
+**Context.** `harden_linux` must remove the `packer` build account and its passwordless
+sudoers entry before the image is published. Packer is logged in **as that account**, and
+after the last provisioner it opens a fresh session to run `shutdown_command`. Deleting the
+account from a provisioner therefore breaks the connection Packer needs to shut the machine
+down, and the build fails having done everything correctly.
+
+**Decision.** Split it. The role installs `/usr/local/sbin/image-finalize.sh`, and the
+source's `shutdown_command` invokes that script through `sudo`. Running as root, it removes
+the sudoers file, kills and deletes the account, clears machine-id, SSH host keys, shell
+history, package caches and build logs, trims free space, and powers off — one action that
+does not need to survive its own effects.
+
+The shutdown command falls back to a plain `shutdown -P now` when the script is absent, so
+a build with the Ansible provisioner disabled still terminates rather than hanging for the
+full `shutdown_timeout`.
+
+**Consequence, and it is a real one.** Phase 4's goss suite runs in-guest *before*
+finalisation, so **it cannot assert that the build account is gone** — at the moment it
+runs, the account is still there and still required. The absence has to be verified against
+the artefact offline instead. That limitation is stated in `IMAGE-STANDARD.md` rather than
+left for someone to assume the in-guest suite covers it.
+
+Secondary benefit: machine-id and SSH host key removal belong in the same place. Every VM
+built from an image that kept its host keys presents the same keys, so a
+man-in-the-middle against one is a man-in-the-middle against all of them — and a shared
+machine-id makes cloned VMs collide on DHCP leases.
+
+**Rejected.** Removing the account in the last provisioner and letting Packer fail — the
+artefact is discarded on failure, so this produces no image at all. Locking the account
+instead of deleting it — leaves a real account with a real authorized_keys file in the
+published image, which is the thing being avoided. A systemd oneshot that cleans up on
+first boot — the published image still contains the account, so anyone inspecting the
+artefact finds it.
+
+---
+
+## ADR-0016 — A smaller hand-written role, not an off-the-shelf CIS role
+
+**Phase:** 2
+**Status:** accepted
+
+**Context.** Maintained CIS roles exist — `ansible-lockdown/RHEL9-CIS` is the obvious one —
+and they implement far more of the benchmark than this repo does.
+
+**Decision.** Write a smaller role covering a selected subset, with every applied control
+tagged by CIS section and every omitted control listed with its reason in
+`docs/IMAGE-STANDARD.md`.
+
+**Consequence.** Less coverage. In exchange, the interesting decision — *which controls this
+image applies and why not the others* — is expressed as prose a reviewer reads, rather than
+as a hundred booleans in a vars file that nobody reads as a decision record. The
+not-applied table is longer than the applied table, and deliberately so: it separates
+controls that break the build, controls belonging at deployment, controls needing a
+site-specific decision, and controls whose cost exceeds their benefit.
+
+**For a production estate the trade goes the other way** — take the maintained role and put
+the effort into the exception register instead. That is the honest recommendation, and it is
+stated in `IMAGE-STANDARD.md` rather than left implied, because it is not the same as what a
+portfolio repo should demonstrate.
+
+**Rejected.** Importing the Galaxy role and tuning it — better coverage, but the repo would
+then be demonstrating the ability to set variables. Claiming full CIS Level 1 — untrue, and
+the sort of claim that survives exactly until someone runs a scanner against the image.

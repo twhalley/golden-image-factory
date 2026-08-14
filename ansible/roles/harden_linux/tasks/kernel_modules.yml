@@ -1,0 +1,43 @@
+---
+# CIS 1.1 — filesystem kernel modules.
+#
+# Both halves are required and people routinely do only the first. `install <fs>
+# /bin/true` stops modprobe loading it by name; `blacklist` stops the automatic
+# loading that udev triggers on device insertion. Either alone leaves a path open.
+
+- name: 1.1.1 | Disable unused filesystem kernel modules
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/99-cis-filesystems.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by harden_linux (CIS 1.1.1.x). Do not edit by hand.
+      #
+      # `install ... /bin/true` prevents explicit modprobe; `blacklist` prevents
+      # udev-triggered autoloading. Both are needed.
+      {% for fs in harden_linux_disabled_filesystems %}
+      install {{ fs }} /bin/true
+      blacklist {{ fs }}
+      {% endfor %}
+  notify: Rebuild initramfs
+
+- name: 1.1.1 | Unload the modules if they are already loaded
+  # A module compiled in or already resident is not covered by modprobe.d. This
+  # is best-effort by design: a module in use cannot be removed, and failing the
+  # build over it would be wrong when the modprobe.d rules still prevent it
+  # loading on the next boot — which is the state the image is published in.
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ harden_linux_disabled_filesystems }}"
+  failed_when: false
+  changed_when: false
+
+- name: 1.5.1 | Ensure address space layout randomisation is enabled
+  ansible.posix.sysctl:
+    name: kernel.randomize_va_space
+    value: "2"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-cis.conf
+    reload: true

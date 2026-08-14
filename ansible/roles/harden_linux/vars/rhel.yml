@@ -1,0 +1,28 @@
+---
+# RHEL-family specifics. Loaded by tasks/main.yml on ansible_facts['os_family'].
+#
+# The point of isolating these is that the task files stay family-agnostic, so a
+# control is written once and the divergence is visible in one place rather than
+# scattered through `when:` clauses.
+
+harden_linux_mac_system: selinux
+harden_linux_firewall_package: firewalld
+harden_linux_firewall_service: firewalld
+
+harden_linux_audit_package: audit
+harden_linux_audit_service: auditd
+
+harden_linux_pwquality_conf: /etc/security/pwquality.conf
+harden_linux_faillock_conf: /etc/security/faillock.conf
+
+# RHEL 9 expresses crypto policy system-wide. Setting sshd's algorithms without
+# also accounting for this is a classic way to write a config that looks applied
+# and is overridden — the crypto-policies drop-in wins.
+harden_linux_crypto_policy: "DEFAULT"
+
+harden_linux_family_packages:
+  - audit
+  - firewalld
+  - libpwquality
+
+harden_linux_login_defs: /etc/login.defs

@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  role_name: harden_linux
+  author: golden-image-factory
+  description: >-
+    A selected subset of CIS Level 1 for Rocky 9 and Ubuntu 24.04, applied at
+    image build time. Controls deliberately not applied are listed with reasons
+    in docs/IMAGE-STANDARD.md.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["9"]
+    - name: Ubuntu
+      versions: ["noble"]
+  galaxy_tags:
+    - hardening
+    - cis
+    - security
+
+dependencies: []

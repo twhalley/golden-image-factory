@@ -1,0 +1,60 @@
+# Managed by harden_linux. Do not edit by hand — changes are overwritten on the
+# next image build.
+#
+# A drop-in rather than an edit to sshd_config, so that a package upgrade
+# replacing the main file does not silently revert the hardening. The role
+# verifies the Include directive precedes any conflicting setting before writing
+# this, because OpenSSH takes the first value it sees.
+#
+# CIS Distribution Independent Linux Benchmark v2.0.0, section 5.2.
+
+# 5.2.5 — no direct root login. The build account is removed at image
+# finalisation, so a deployed VM is reached by whatever account the consuming
+# team provisions, never as root over the network.
+PermitRootLogin {{ harden_linux_sshd_permit_root_login }}
+
+# 5.2.6 — keys only. This is also what makes the ephemeral build key model work:
+# there is no password to guess because there is no password.
+PasswordAuthentication {{ harden_linux_sshd_password_authentication }}
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
+
+# 5.2.7 — do not trust the client's environment. PermitUserEnvironment allows a
+# user to set LD_PRELOAD and similar via ~/.ssh/environment.
+PermitUserEnvironment no
+
+# 5.2.8 — ignore .rhosts and .shosts entirely.
+IgnoreRhosts yes
+HostbasedAuthentication no
+
+# 5.2.9 — bound the damage from a stolen or forgotten session.
+ClientAliveInterval {{ harden_linux_sshd_client_alive_interval }}
+ClientAliveCountMax {{ harden_linux_sshd_client_alive_count_max }}
+LoginGraceTime {{ harden_linux_sshd_login_grace_time }}
+MaxAuthTries {{ harden_linux_sshd_max_auth_tries }}
+MaxSessions {{ harden_linux_sshd_max_sessions }}
+MaxStartups 10:30:60
+
+# 5.2.10 — a server image has no display to forward and no reason to be a tunnel.
+X11Forwarding {{ harden_linux_sshd_x11_forwarding }}
+AllowTcpForwarding {{ harden_linux_sshd_allow_tcp_forwarding }}
+AllowAgentForwarding no
+GatewayPorts no
+PermitTunnel no
+
+# 5.2.11 — modern algorithms only. Named explicitly because the two supported
+# distributions ship different defaults, and "whatever the vendor chose" is not
+# a standard an image can be audited against.
+KexAlgorithms {{ harden_linux_sshd_kex_algorithms }}
+Ciphers {{ harden_linux_sshd_ciphers }}
+MACs {{ harden_linux_sshd_macs }}
+
+# 5.2.12 — present the banner before authentication.
+Banner /etc/issue.net
+
+# Logging at INFO records the source and key fingerprint of each authentication,
+# which is what makes the auditd rules useful after the fact.
+LogLevel INFO
+UsePAM yes
+Protocol 2
