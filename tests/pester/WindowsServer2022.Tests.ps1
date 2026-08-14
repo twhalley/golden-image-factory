@@ -1,5 +1,5 @@
 <#
-    Pester — Windows Server 2022 golden image.
+    Pester -- Windows Server 2022 golden image.
 
     THE CONTRACT is the same as the goss suites: every claim in
     docs/IMAGE-STANDARD.md has an assertion here, and every assertion here
@@ -7,7 +7,7 @@
     for it; if there is no test, the control is not claimed.
 
     Pester rather than goss, because goss has no meaningful Windows support. That
-    is a real split — two test frameworks to maintain — and it is the right one:
+    is a real split -- two test frameworks to maintain -- and it is the right one:
     the alternative is a single framework that does Linux well and Windows badly.
 
     Runs IN-GUEST before sysprep, so it tests the image rather than the template.
@@ -241,7 +241,7 @@ Describe 'Audit policy (CIS 17.x)' {
 
     It 'records the command line in process creation events' {
         # Without this, 4688 records that a process started but not what it was
-        # asked to do — which is most of the value during an incident.
+        # asked to do -- which is most of the value during an incident.
         (Get-RegValue 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit' 'ProcessCreationIncludeCmdLine_Enabled') | Should -Be 1
     }
 
@@ -279,7 +279,7 @@ Describe 'Firewall and RDP (CIS 9.x)' {
     }
 
     It 'has RDP enabled' {
-        # Deliberately left on — it is the only interactive recovery path on a
+        # Deliberately left on -- it is the only interactive recovery path on a
         # Windows VM whose networking has gone wrong.
         (Get-RegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' 'fDenyTSConnections') | Should -Be 0
     }
@@ -318,14 +318,14 @@ Describe 'Sysprep readiness' {
 
 Describe 'WinRM teardown contract' {
     <#
-        WinRM is still up right now — these tests arrived over it. It cannot be
+        WinRM is still up right now -- these tests arrived over it. It cannot be
         torn down before Packer's shutdown command, because that command travels
         over the same transport (ADR-0017).
 
         So what is asserted here is the CONTRACT: that the finalisation script
         exists and will do the teardown. The end state is verified against the
         artefact offline. Testing the contract is weaker than testing the result
-        and saying so is the point — an assertion that silently tested nothing
+        and saying so is the point -- an assertion that silently tested nothing
         would be worse.
     #>
 

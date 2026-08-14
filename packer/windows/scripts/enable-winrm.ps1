@@ -1,7 +1,7 @@
 # Bring WinRM up so Packer can connect. Run once, by FirstLogonCommands.
 #
 # This is the ONLY thing that happens outside Ansible on the Windows image. The
-# hardening — including tearing WinRM back down — is the harden_windows role, so
+# hardening -- including tearing WinRM back down -- is the harden_windows role, so
 # that the Windows and Linux images are configured by the same tool and reviewed
 # the same way.
 #
@@ -14,7 +14,7 @@
 #   - harden_windows disables Basic, disables unencrypted transport, and removes
 #     the firewall rule before sysprep, and the Pester suite asserts all three
 #
-# The alternative — HTTPS with a self-signed certificate — moves the trust
+# The alternative -- HTTPS with a self-signed certificate -- moves the trust
 # problem rather than solving it, because Packer would then have to skip
 # certificate validation anyway. What makes this safe is the teardown, not the
 # transport, so the teardown is what is tested. See ADR-0017.

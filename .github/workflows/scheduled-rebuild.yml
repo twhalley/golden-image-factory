@@ -71,7 +71,12 @@ jobs:
           grep "linux_amd64.zip" sums.txt \
             | sed "s|packer_${PACKER_VERSION}_linux_amd64.zip|packer.zip|" \
             | sha256sum -c -
-          unzip -q packer.zip && sudo install -m 0755 packer /usr/local/bin/packer
+          # -d into a scratch directory, NOT the working directory: this repo has a
+          # DIRECTORY named packer/ and the zip contains a FILE named packer, so a
+          # plain `unzip` stops to ask "replace packer?" and exits 1 on a runner
+          # with no tty. The failure names neither the directory nor the prompt.
+          unzip -q -o packer.zip -d "${RUNNER_TEMP}/packerbin"
+          sudo install -m 0755 "${RUNNER_TEMP}/packerbin/packer" /usr/local/bin/packer
           pip install --disable-pip-version-check "ansible-core==2.21.3"
           ansible-galaxy collection install -r ansible/requirements.yml
 

@@ -200,6 +200,33 @@ The artefact tests are the ones to trust.
 
 ---
 
+## Accepted exceptions
+
+Exactly one check is skipped, and it is recorded here rather than left as a flag in a
+workflow that nobody reads.
+
+**`CKV_GHA_7` — "GitHub Actions workflow_dispatch inputs MUST be empty".**
+
+The rule exists to protect build reproducibility: an attacker-supplied input that reaches
+the build can change what is produced, which breaks the SLSA provenance argument phase 7
+depends on. That is a good rule and it is why the exception is written down rather than
+quietly applied.
+
+Two workflows fail it:
+
+| Workflow | Input | What it reaches |
+|---|---|---|
+| `build.yml` | `image` | A `choice` type constrained to `all`, `rocky9`, `ubuntu2404`, `windows2022` — GitHub rejects anything else before the job starts |
+| `scheduled-rebuild.yml` | `reason` | Echoed into `$GITHUB_STEP_SUMMARY` and nowhere else |
+
+Neither influences what is built. `reason` exists precisely so that an out-of-cycle rebuild
+— the emergency response to a critical CVE — records *why* it was run, which is
+audit-positive rather than a risk.
+
+**The condition on this exception:** if either input ever starts feeding a build parameter,
+the exception is void and the inputs go. Worth stating, because exception registers rot when
+nobody writes down what would invalidate them.
+
 ## Deliberately deferred
 
 Named here so they read as decisions rather than omissions:
