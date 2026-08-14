@@ -142,7 +142,16 @@ jobs:
           # works.
           eval "$(scripts/make-build-key.sh)"
           packer init packer/linux
-          packer validate -var-file=packer/linux/rocky9.pkrvars.hcl packer/linux
+          # Every OS variable file against every source. The two dimensions are
+          # independent — a change to a source block can break one distribution
+          # and not the other, and a change to a variable file can break one
+          # source and not the rest — so validating a single combination proves
+          # much less than it appears to.
+          for varfile in packer/linux/*.pkrvars.hcl; do
+            echo "::group::packer validate ${varfile}"
+            packer validate -var-file="${varfile}" packer/linux
+            echo "::endgroup::"
+          done
 
       # The honest substitute for the Packer IaC scanning that does not exist.
       # Read policy/packer.rego before treating this as equivalent to checkov's
