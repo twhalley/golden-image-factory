@@ -20,8 +20,26 @@ build {
       "cat /etc/image-build-info",
       "echo '--- filesystem layout ---'",
       "findmnt --real --output TARGET,SOURCE,FSTYPE,OPTIONS",
-      "echo '--- selinux ---'",
-      "getenforce",
+      # Mandatory access control is NOT the same control on both families, and
+      # this step is shared by all of them. RHEL ships SELinux and `getenforce`;
+      # Ubuntu ships AppArmor and has no `getenforce` at all — assuming otherwise
+      # failed a build here with exit 127 after a perfectly good install.
+      #
+      # Reporting whichever is present, and failing if neither is, keeps the
+      # check meaningful on both rather than lowering it to something that passes
+      # everywhere. It also fixes the vocabulary for phase 2: the image standard
+      # can claim "mandatory access control enforcing", which is true of both,
+      # and must not claim "SELinux enforcing", which is true of one.
+      "echo '--- mandatory access control ---'",
+      "if command -v getenforce >/dev/null 2>&1; then",
+      "  echo \"SELinux: $(getenforce)\"",
+      "  test \"$(getenforce)\" = 'Enforcing'",
+      "elif command -v aa-enabled >/dev/null 2>&1; then",
+      "  echo \"AppArmor: $(aa-enabled)\"",
+      "  test \"$(aa-enabled)\" = 'Yes'",
+      "else",
+      "  echo 'No mandatory access control tooling found' >&2; exit 1",
+      "fi",
     ]
     inline_shebang = "/bin/bash -e"
   }

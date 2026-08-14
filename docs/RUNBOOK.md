@@ -37,6 +37,14 @@ packer build \
   packer/linux
 ```
 
+Swap `rocky9.pkrvars.hcl` for `ubuntu2404.pkrvars.hcl` to build the other distribution.
+Nothing else changes: the source blocks, the build block and the manifest are shared, and
+the variable file selects the installer family, the ISO, the boot command and the guest OS
+identifiers.
+
+`packer build` refuses to start if the output directory already exists, so clear `builds/`
+between runs.
+
 Artefacts land in `builds/` (gitignored) with `manifest.json` alongside.
 
 **Use a local ISO** to avoid re-downloading 1.5 GB per build. Packer accepts a path as
@@ -88,6 +96,23 @@ Almost always the boot command, not the network. In order of likelihood:
 2. The kickstart failed and anaconda is sitting on an error screen. Same fix — watch it.
 3. `/dev/kvm` is held by Workstation's `vmmon`, so QEMU fell back to software emulation and
    is simply slow rather than stuck.
+
+### Capturing the guest console headlessly
+
+The single most useful debugging tool in this repo, and how both boot commands were
+actually settled. Packer prints the guest's VNC address as it starts (`vnc://127.0.0.1:59xx`).
+While the build is running:
+
+```bash
+pipx install vncdotool
+vncdo -s 127.0.0.1::5954 capture console.png    # note the :: and the full 59xx port
+```
+
+That screenshot is what showed Rocky 9.8 booting **isolinux** rather than GRUB2 — a
+distinction no amount of reasoning from the documentation was going to settle, and one that
+otherwise presents as a 45-minute timeout with no error. `vncdo` can also send keystrokes
+(`vncdo -s ... key tab`), so a boot command can be trialled interactively against the live
+installer before committing it to a template.
 
 ---
 

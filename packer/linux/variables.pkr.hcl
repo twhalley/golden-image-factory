@@ -53,6 +53,20 @@ variable "boot_command" {
   description = "Keystrokes that put the installer into unattended mode. Distro- and bootloader-specific, so it lives with the OS variables rather than in the shared source block."
 }
 
+// Guest OS type identifiers. These are per-distribution and per-platform, and
+// they are not cosmetic: VMware and vSphere use them to pick default virtual
+// hardware, and a wrong value produces a VM that installs but behaves oddly
+// later. Set in the OS variable file alongside the ISO it describes.
+variable "vmware_guest_os_type" {
+  type        = string
+  description = "VMware Workstation guest OS identifier, e.g. rockylinux-64 or ubuntu-64."
+}
+
+variable "vsphere_guest_os_type" {
+  type        = string
+  description = "vSphere guest OS identifier, e.g. rockyLinux_64Guest or ubuntu64Guest."
+}
+
 variable "boot_wait" {
   type        = string
   default     = "5s"
