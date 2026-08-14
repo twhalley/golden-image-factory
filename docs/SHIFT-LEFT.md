@@ -122,7 +122,7 @@ here so the configuration is reviewable, and evidenced by the screenshots in
 | **Push protection** | Enabled | Blocks the push itself, server-side. Not bypassable by `--no-verify` |
 | Push protection bypass | No bypass allowed | A bypass that anyone can grant themselves is not a control |
 | Dependabot | Enabled, `github-actions` ecosystem, weekly | SHA-pinned actions never drift — and never get patched either, without this |
-| Branch protection on `main` | PR required, 1 approving review, stale reviews dismissed | |
+| Branch protection on `main` | PR required, **0** approving reviews, stale reviews dismissed, review threads must resolve | 0 approvals is deliberate on a single-maintainer repo — see [ADR-0004](DECISIONS.md#adr-0004). Everything else still applies to the admin |
 | Required status checks | `gitleaks`, `checkov`, `packer fmt + opa policy` | Strict mode: branch must be up to date |
 | Require signed commits | Yes | See the commit-signing note below |
 | Force push / deletion | Blocked | |
