@@ -11,10 +11,21 @@ builds/
 packer_cache/
 manifest.json
 
-# Real variable values. Only *.pkrvars.hcl.example is committed.
-*.pkrvars.hcl
-!*.pkrvars.hcl.example
+# Packer variable files split by intent, because "ignore all .pkrvars.hcl" would
+# also swallow the OS definitions, which are configuration and belong in git.
+#
+#   <os>.pkrvars.hcl        committed — ISO URL, checksum, boot command
+#   *.local.pkrvars.hcl     ignored   — anything with a real value in it
+#   *.auto.pkrvars.hcl      ignored   — auto-loaded, too easy to fill with secrets
+#
+# Credentials do not go in a file at all: they come from PKR_VAR_* environment
+# variables. See docs/RUNBOOK.md.
+*.local.pkrvars.hcl
 *.auto.pkrvars.hcl
+secrets.pkrvars.hcl
+
+# Ephemeral per-build SSH keys
+.build-keys/
 
 # Terraform
 .terraform/

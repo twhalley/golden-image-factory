@@ -238,3 +238,198 @@ dependency tree; and the version must be bumped by hand, since Dependabot covers
 **Rejected.** Pinning the action to an older tag whose bundled container is newer —
 guesswork, and it would recur. Passing `framework: all` to make the error go away —
 would have masked the stale version entirely, which is the actual defect.
+
+---
+
+## ADR-0009 — The kickstart is served over HTTP and reached by editing the GRUB entry
+
+**Phase:** 1
+**Status:** accepted
+
+**Context.** Anaconda can be pointed at a kickstart in two ways. Packer's built-in HTTP
+server plus an `inst.ks=` kernel argument typed by `boot_command`, or a volume labelled
+`OEMDRV` containing `/ks.cfg`, which anaconda finds automatically with no kernel argument
+and no keystrokes at all.
+
+`boot_command` is the fragile part of any ISO-based Packer build. EL9 removed isolinux and
+boots the installer through GRUB2 on both BIOS and UEFI, so the `<tab>`-then-append pattern
+that every EL7 and EL8 example uses does not apply — the entry has to be opened with `e`,
+the cursor moved onto the `linux` line, and the edit committed with Ctrl-X rather than
+Enter.
+
+**Decision.** HTTP plus a GRUB edit, as specified. The boot command is a per-OS variable
+rather than part of the shared source block, and every keystroke in it is commented in
+`rocky9.pkrvars.hcl` with what it is for.
+
+**Consequence.** The templated kickstart can carry build-time values — the ephemeral SSH
+public key, the image version, the git commit — because `templatefile()` renders it into
+`http_content` at build time. That is what keeps the build public key out of the
+repository. An `OEMDRV` volume would need the rendered file written to disk first.
+
+The cost is a boot command that depends on the installer's GRUB menu layout, so a change to
+the Rocky ISO's default entry ordering breaks the build. It fails loudly at the SSH timeout
+rather than silently, which is the acceptable failure mode.
+
+**Rejected.** `OEMDRV` via `cd_files`/`cd_label` — genuinely more robust, needs no
+keystrokes, and is the better choice for a build that must never flake. Not taken because
+templating the kickstart is worth more here than removing the boot command, and because the
+HTTP path is what the brief specified. Recorded because it is the first thing to switch to
+if the boot command proves unreliable in CI.
+
+---
+
+## ADR-0010 — Azure authenticates with an OIDC token in `client_jwt`, which is also what makes the source validatable
+
+**Phase:** 1 (wiring), 8 (execution)
+**Status:** accepted
+
+**Context.** Two requirements collided. Azure auth must be a GitHub OIDC federated
+credential with no client secret anywhere. And `packer validate` must cover all four
+sources on every PR, including `azure-arm`, so that a source nobody builds cannot rot
+unnoticed.
+
+The azure plugin authenticates during `prepare`, not at build time. With no credentials it
+fails validation outright:
+
+```
+No valid set of authentication values specified:
+  to use the Managed Identity of the current machine, do not specify any of the fields below:
+  - client_secret
+  - client_jwt
+  - client_cert_path
+  - use_azure_cli_auth
+```
+
+Tested and rejected: omitting `client_id`, setting `use_azure_cli_auth = false`, and
+supplying `ARM_OIDC_TOKEN` in the environment. All three fail the same way. **`packer
+validate` for `azure-arm` is not credential-free**, and any repo claiming to validate an
+Azure source with purely dummy variables should be read carefully.
+
+**Decision.** Set `client_jwt = var.azure_oidc_token`. This is not a workaround — it is the
+correct wiring for a federated credential. `client_jwt` is the field the plugin expects a
+federated OIDC assertion in; the workflow requests a short-lived token from the Actions
+runtime and passes it as `PKR_VAR_azure_oidc_token`. The variable carries a dummy default,
+which is what makes `packer validate` pass locally and in PRs with no Azure access.
+
+**Consequence.** All four sources validate with `packer validate`, and the same field
+carries the real token in phase 8 — the validation path and the production path are the
+same code, not two configurations that can drift. No client secret exists to leak;
+`policy/packer.rego` fails the build if `client_secret` ever appears in an Azure source.
+
+**Rejected.** Excluding `azure-arm` from validation and documenting the gap — acceptable,
+but it leaves the least-exercised source also the least-checked. A dummy `client_secret` to
+satisfy `prepare` — would have put a fake secret in the repo and, worse, made the
+secret-based auth path the one that gets tested.
+
+---
+
+## ADR-0011 — Structure goes in the installer, configuration goes in Ansible
+
+**Phase:** 1
+**Status:** accepted
+
+**Context.** Some hardening can be expressed in more than one place. Mount options such as
+`nodev,nosuid,noexec` can be set by the kickstart with `--fsoptions`, or by Ansible editing
+`/etc/fstab`. Doing both is worse than either.
+
+**Decision.** The installer does only what cannot be changed afterwards — principally the
+filesystem layout, since a filesystem that was not created separately cannot be given its
+own mount options without a rebuild. Everything else, mount options included, is the
+Ansible role's job.
+
+**Consequence.** The deciding factor is `azure-arm`, which has no kickstart at all because
+it builds from a marketplace base image. Any control implemented in the kickstart either
+misses the Azure image or needs a second, divergent implementation for it. Controls
+implemented in Ansible apply to all four targets from one definition and are covered by one
+goss suite.
+
+This makes the kickstart look thinner than a typical hardened-image kickstart. That is the
+intended shape, and `IMAGE-STANDARD.md` states the rule so it does not read as an omission.
+
+**Rejected.** Setting mount options in the kickstart because it is "closer to the metal" —
+it produces two sources of truth for a control, and the Azure image silently gets the weaker
+one.
+
+---
+
+## ADR-0012 — The build credential is an ephemeral key pair, not a password
+
+**Phase:** 1
+**Status:** accepted
+
+**Context.** Most Packer ISO examples set a build password in the kickstart and
+`ssh_password` in the source. It is simple and it works. It also means a credential lives in
+the repository, and it survives into the published image unless something explicitly
+removes it.
+
+**Decision.** `scripts/make-build-key.sh` generates an ed25519 key per build into a
+gitignored directory and prints the `PKR_VAR_*` exports. The public half is injected into
+the templated kickstart at build time; the private half never leaves the build host. The
+`packer` account is created with a locked password and is key-only.
+
+**Consequence.** No build credential exists in git at any point, and the credential's
+lifetime is one build. Slight friction: a build needs `eval "$(scripts/make-build-key.sh)"`
+first, which is documented in `RUNBOOK.md` and handled by a step in CI.
+
+`policy/packer.rego` denies any source that sets `ssh_password`, so the shortcut cannot be
+reintroduced quietly. The `packer` account and its sudoers file are removed by the
+`harden_linux` role in phase 2, and phase 4's goss suite asserts they are gone — until
+then, `IMAGE-STANDARD.md` states plainly that built images still contain a build account.
+
+**Rejected.** `ssh_password` with a value from `PKR_VAR_*` — keeps the secret out of git but
+still puts a password on the image. A long-lived committed public key — no secret in the
+repo, but every image ever built would trust one key that cannot be rotated without
+rebuilding all of them.
+
+---
+
+## ADR-0013 — Rocky 9 is built from `boot.iso`, because `minimal.iso` cannot be verified
+
+**Phase:** 1
+**Status:** accepted
+
+**Context.** Pinning the Rocky 9.8 ISO and its digest — the most routine step in the phase —
+produced a download of 2.48 GB against a published 1.48 GB. Client-side causes were ruled
+out by repeating the download without `curl -C -` and again with no `--retry` at all; the
+size was unchanged.
+
+The server sends 2,755,067,904 bytes for `Rocky-9.8-x86_64-minimal.iso`. The `CHECKSUM`
+manifest in the same directory claims 1,480,048,640. `boot.iso` and `dvd.iso` both match
+their published digests exactly; only `minimal` disagrees, and the manifest gives it the
+same byte count as `boot.iso` — which is what a stale or copy-pasted entry looks like. Four
+independent mirrors serve byte-identical content, so this is a manifest problem rather than
+a corrupt mirror. The manifest is unsigned, so there is no cryptographic way to decide which
+side is authoritative.
+
+A second line of evidence was tried and discarded: the served `minimal.iso` reports an ISO
+volume label of `Rocky-9-8-x86_64-dvd`, which reads as conclusive. It is not — the verified
+`boot.iso` carries the identical label, because Rocky labels by release rather than by
+variant and the installer depends on it (`inst.stage2=hd:LABEL=Rocky-9-8-x86_64-dvd`). The
+evidence file keeps the discarded reasoning rather than quietly dropping it.
+
+Full detail: [`evidence/rocky98-minimal-iso-checksum-mismatch-2026-08-14.md`](../evidence/rocky98-minimal-iso-checksum-mismatch-2026-08-14.md).
+
+**Decision.** Build from `Rocky-9.8-x86_64-boot.iso`, whose digest verifies, and declare the
+package source in the kickstart with `url` and `repo` directives. The image becomes a
+network install.
+
+**Consequence.** The build now requires a reachable package mirror, and two builds from the
+same commit on different days may pull different package versions. The second cost is
+smaller than it looks: the kickstart runs a full `dnf upgrade` in `%post` regardless, so the
+image was never bit-reproducible across time. Accountability comes from the manifest and the
+phase 7 SBOM recording what actually landed, not from pretending the inputs are frozen.
+
+If a later point release fixes the manifest, reverting is two lines in
+`rocky9.pkrvars.hcl` plus dropping the `url`/`repo` directives.
+
+**Rejected — and this is the important part.** Downloading the 2.75 GB file, computing its
+SHA-256, and pinning that. It would work, `packer validate` would pass, and the
+`iso_checksum` field would be populated. It would also mean pinning a digest derived from an
+unverified download: the value would record whatever the mirror served that day, every
+future build would faithfully reproduce it, and the chain of custody from vendor to image
+would be broken with nothing visible to show it. For a repo whose claim is evidence of
+what is inside an image, that is exactly the wrong trade.
+
+Also rejected: `dvd.iso`, which verifies but is 15 GB; and `iso_checksum = "none"`, which is
+a real Packer feature, would have made the problem vanish in under a minute, and is denied
+outright by `policy/packer.rego` for precisely this reason.

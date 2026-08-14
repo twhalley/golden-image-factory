@@ -14,10 +14,14 @@ rules:
   truthy:
     allowed-values: ["true", "false"]
     check-keys: false
+  # ansible-lint requires these two exact settings and warns that fix mode is
+  # unavailable otherwise. Matching them keeps one YAML style across the repo
+  # rather than two tools disagreeing about the same file.
+  comments-indentation: false
   comments:
     min-spaces-from-content: 1
   braces:
     max-spaces-inside: 1
   octal-values:
     forbid-implicit-octal: true
-    forbid-explicit-octal: false
+    forbid-explicit-octal: true

@@ -6,11 +6,88 @@
 
 ## Contents
 
+- [Build a Linux image](#build-a-linux-image)
 - [Workstation setup](#workstation-setup)
 - [Pinned tool versions](#pinned-tool-versions)
 - [Trap: signed commits that GitHub will not verify](#trap-signed-commits-that-github-will-not-verify)
 - [Trap: VMware Workstation and KVM cannot both hold `/dev/kvm`](#trap-vmware-workstation-and-kvm-cannot-both-hold-devkvm)
 - [Applying repository settings](#applying-repository-settings)
+
+---
+
+## Build a Linux image
+
+```bash
+# 1. Ephemeral build key. Regenerated per build; never committed.
+eval "$(scripts/make-build-key.sh)"
+
+# 2. Plugins, pinned by packer/linux/plugins.pkr.hcl
+packer init packer/linux
+
+# 3. Validate every source — including the two nothing builds yet, which are
+#    precisely the ones that rot unnoticed.
+packer validate -var-file=packer/linux/rocky9.pkrvars.hcl packer/linux
+
+# 4. Build. -only is not optional: without it Packer runs all four sources,
+#    including azure-arm, which would try to spend money.
+packer build \
+  -only='linux.qemu.linux' \
+  -var-file=packer/linux/rocky9.pkrvars.hcl \
+  -var "git_commit=$(git rev-parse --short HEAD)" \
+  packer/linux
+```
+
+Artefacts land in `builds/` (gitignored) with `manifest.json` alongside.
+
+**Use a local ISO** to avoid re-downloading 1.5 GB per build. Packer accepts a path as
+`iso_url`, and the checksum is still verified.
+
+Fetch it with the checksum verified before it is used, and **not** with `curl -C -` and
+`--retry` together. If a retry fires against a server that does not honour the range
+request, curl appends the whole body again rather than resuming — producing a file that is
+larger than the real ISO and silently corrupt. Observed here: a 2.48 GB file for a
+1.48 GB ISO. Download to a `.part` name, verify, then rename:
+
+```bash
+mkdir -p ~/.cache/golden-image-factory/isos
+cd ~/.cache/golden-image-factory/isos
+iso=Rocky-9.8-x86_64-minimal.iso
+curl -fL --retry 3 --retry-delay 2 -o "${iso}.part" \
+  "https://download.rockylinux.org/pub/rocky/9/isos/x86_64/${iso}"
+echo "d338032cd1cdd41c67139f2f71b4c832c8e4a21943106519db9c7137df7a63d4  ${iso}.part" \
+  | sha256sum -c - && mv "${iso}.part" "${iso}"
+```
+
+```bash
+packer build -only='linux.qemu.linux' \
+  -var-file=packer/linux/rocky9.pkrvars.hcl \
+  -var "iso_url=$HOME/.cache/golden-image-factory/isos/Rocky-9.8-x86_64-minimal.iso" \
+  packer/linux
+```
+
+**Watch the installer** when a boot command misbehaves — this is the only practical way to
+debug `boot_command`, because a wrong keystroke shows up as an SSH timeout 45 minutes
+later with no other clue:
+
+```bash
+packer build -only='linux.qemu.linux' -var headless=false ...
+```
+
+**Build on Workstation instead of QEMU** — note the `/dev/kvm` conflict below:
+
+```bash
+packer build -only='linux.vmware-iso.linux' ...
+```
+
+### If the build hangs waiting for SSH
+
+Almost always the boot command, not the network. In order of likelihood:
+
+1. The GRUB menu changed in a new ISO point release, so `<up>` selects the wrong entry.
+   Re-run with `-var headless=false` and watch.
+2. The kickstart failed and anaconda is sitting on an error screen. Same fix — watch it.
+3. `/dev/kvm` is held by Workstation's `vmmon`, so QEMU fell back to software emulation and
+   is simply slow rather than stuck.
 
 ---
 
