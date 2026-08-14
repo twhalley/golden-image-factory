@@ -25,16 +25,24 @@ Set by the kickstart at install time. This is the one part of the image that gen
 cannot be retrofitted — a filesystem that was not created separately cannot be given its
 own mount options later without a rebuild.
 
-| Mount | Size | Type | Why it is separate |
+Identical on Rocky 9 and Ubuntu 24.04 — same mounts, same sizes, same volume group
+name — so one goss suite and one Ansible role cover both.
+
+| Mount | Size | Layout | Why it is separate |
 |---|---|---|---|
-| `/boot` | 1024 MB | xfs, plain partition | Outside LVM so the bootloader does not depend on LVM being assembled |
-| `/` | 8192 MB | xfs, LVM | |
-| `/home` | 1024 MB | xfs, LVM | Carries `nodev,nosuid` in phase 2. Small — a server image is not a workstation |
-| `/var` | 4096 MB | xfs, LVM | A runaway package cache or spool must not fill `/` |
-| `/var/log` | 2048 MB | xfs, LVM | A log flood must not fill `/` or `/var` |
-| `/var/log/audit` | 2048 MB | xfs, LVM | **The important one.** `auditd` is configured to halt or stop logging when its filesystem fills. Sharing that filesystem with general logs means any chatty service can trigger it |
-| `/var/tmp` | 1024 MB | xfs, LVM | Carries `nodev,nosuid,noexec` in phase 2 |
-| `/tmp` | 1024 MB | xfs, LVM | As above |
+| `/boot` | 1024 MB | plain partition | Outside LVM so the bootloader does not depend on LVM being assembled |
+| `/` | 8192 MB | LVM | |
+| `/home` | 1024 MB | LVM | Carries `nodev,nosuid` in phase 2. Small — a server image is not a workstation |
+| `/var` | 4096 MB | LVM | A runaway package cache or spool must not fill `/` |
+| `/var/log` | 2048 MB | LVM | A log flood must not fill `/` or `/var` |
+| `/var/log/audit` | 2048 MB | LVM | **The important one.** `auditd` is configured to halt or stop logging when its filesystem fills. Sharing that filesystem with general logs means any chatty service can trigger it |
+| `/var/tmp` | 1024 MB | LVM | Carries `nodev,nosuid,noexec` in phase 2 |
+| `/tmp` | 1024 MB | LVM | As above |
+
+**Filesystem type differs by distribution and that is deliberate:** xfs on Rocky, ext4 on
+Ubuntu. Each is its distribution's own default and its best-tested path. Forcing one onto
+the other would be parity for its own sake, buying nothing and diverging from every piece
+of vendor documentation an operator will reach for.
 
 Volume group `vg_root`, single PV on the remaining space, so the image can be grown after
 deployment without touching the layout.
@@ -100,12 +108,30 @@ monthly scheduled rebuild in phase 6, which is the actual answer to patch manage
 
 | Setting | Value | Note |
 |---|---|---|
-| SELinux | **enforcing** | Never disabled. Turning SELinux off is the most common shortcut in a golden image and it silently invalidates a large part of any CIS claim |
+| Mandatory access control | **enforcing** | SELinux on Rocky, AppArmor on Ubuntu — see below. Never disabled; turning it off is the most common shortcut in a golden image and it silently invalidates a large part of any CIS claim |
 | firewalld | enabled, `ssh` only | Default deny inbound |
 | root password | locked | Root cannot log in, locally or remotely |
 | root SSH | denied (phase 2 enforces in `sshd_config`) | |
 | Build account | key-only, no password | See below |
 | Timezone | UTC | An image carrying a site's timezone cannot be used at another site |
+
+### Mandatory access control: one claim, two implementations
+
+Rocky enforces with **SELinux**; Ubuntu enforces with **AppArmor**. They are not
+interchangeable — different models, different tooling, different policy languages — and
+Ubuntu has no `getenforce` at all.
+
+This is not a footnote, because it fixes the vocabulary for everything downstream. The
+image standard claims **"mandatory access control is enforcing"**, which is true of both and
+testable on both. It does **not** claim "SELinux enforcing", which is true of one. A repo
+that writes the second while shipping both distributions is claiming something it does not
+deliver on half its images.
+
+The build-time check reflects that: it runs `getenforce` where it exists, `aa-enabled`
+otherwise, and **fails the build if neither is present**, rather than degrading to a check
+that passes everywhere by asserting nothing. Learned the direct way — the first Ubuntu
+build completed a perfect install and then failed at exit 127 on a shared provisioner that
+assumed `getenforce`. See ADR-0014.
 
 ## The build account
 

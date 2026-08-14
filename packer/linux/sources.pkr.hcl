@@ -7,8 +7,9 @@
 // README says so rather than implying parity — see azure-arm at the bottom.
 
 locals {
-  // Values every rendering of the kickstart needs. Per-source values are merged
-  // over the top, so each source serves a kickstart matching its own hardware.
+  // Values every rendering of the unattended-install file needs. Both the
+  // kickstart and the autoinstall template take the SAME variable set, which is
+  // what lets one source block serve either family without branching.
   ks_common = {
     os_name        = var.os_name
     image_version  = var.image_version
@@ -23,6 +24,51 @@ locals {
   // Reused by every source. sudo -S reads the (absent) password from stdin and
   // exits rather than hanging on a TTY prompt if NOPASSWD is ever removed early.
   shutdown_command = "echo '' | sudo -S /sbin/shutdown -P now"
+
+  // Per-builder differences are exactly two things: the disk the installer
+  // writes to, and the guest agent matching the hypervisor.
+  per_builder = {
+    qemu = {
+      install_disk        = "vda"
+      guest_agent_package = "qemu-guest-agent"
+      builder_name        = "qemu"
+    }
+    vmware = {
+      install_disk        = "sda"
+      guest_agent_package = "open-vm-tools"
+      builder_name        = "vmware-iso"
+    }
+    vsphere = {
+      install_disk        = "sda"
+      guest_agent_package = "open-vm-tools"
+      builder_name        = "vsphere-iso"
+    }
+  }
+
+  // RHEL serves one kickstart; Debian serves cloud-init's user-data plus an
+  // empty meta-data, which the nocloud datasource requires even with nothing in
+  // it. Both branches of each conditional are evaluated by HCL, which is fine
+  // precisely because both templates accept the same variables.
+  http_qemu = var.os_family == "rhel" ? {
+    "/ks.cfg" = templatefile("http/rocky9-ks.cfg.pkrtpl.hcl", merge(local.ks_common, local.per_builder.qemu))
+    } : {
+    "/user-data" = templatefile("http/ubuntu2404-user-data.pkrtpl.hcl", merge(local.ks_common, local.per_builder.qemu))
+    "/meta-data" = ""
+  }
+
+  http_vmware = var.os_family == "rhel" ? {
+    "/ks.cfg" = templatefile("http/rocky9-ks.cfg.pkrtpl.hcl", merge(local.ks_common, local.per_builder.vmware))
+    } : {
+    "/user-data" = templatefile("http/ubuntu2404-user-data.pkrtpl.hcl", merge(local.ks_common, local.per_builder.vmware))
+    "/meta-data" = ""
+  }
+
+  http_vsphere = var.os_family == "rhel" ? {
+    "/ks.cfg" = templatefile("http/rocky9-ks.cfg.pkrtpl.hcl", merge(local.ks_common, local.per_builder.vsphere))
+    } : {
+    "/user-data" = templatefile("http/ubuntu2404-user-data.pkrtpl.hcl", merge(local.ks_common, local.per_builder.vsphere))
+    "/meta-data" = ""
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -52,13 +98,7 @@ source "qemu" "linux" {
 
   headless = var.headless
 
-  http_content = {
-    "/ks.cfg" = templatefile("http/rocky9-ks.cfg.pkrtpl.hcl", merge(local.ks_common, {
-      install_disk        = "vda"
-      guest_agent_package = "qemu-guest-agent"
-      builder_name        = "qemu"
-    }))
-  }
+  http_content = local.http_qemu
 
   boot_command = var.boot_command
   boot_wait    = var.boot_wait
@@ -88,7 +128,7 @@ source "vmware-iso" "linux" {
   iso_url      = var.iso_url
   iso_checksum = var.iso_checksum
 
-  guest_os_type = "rockylinux-64"
+  guest_os_type = var.vmware_guest_os_type
   version       = "21" // Workstation 17 virtual hardware
 
   cpus   = var.cpus
@@ -106,13 +146,7 @@ source "vmware-iso" "linux" {
 
   headless = var.headless
 
-  http_content = {
-    "/ks.cfg" = templatefile("http/rocky9-ks.cfg.pkrtpl.hcl", merge(local.ks_common, {
-      install_disk        = "sda"
-      guest_agent_package = "open-vm-tools"
-      builder_name        = "vmware-iso"
-    }))
-  }
+  http_content = local.http_vmware
 
   boot_command = var.boot_command
   boot_wait    = var.boot_wait
@@ -165,7 +199,7 @@ source "vsphere-iso" "linux" {
   // Hardware 21 is vSphere 8. Set explicitly: the plugin's default tracks the
   // cluster's, which makes the artefact depend on where it happened to build.
   vm_version           = 21
-  guest_os_type        = "rockyLinux_64Guest"
+  guest_os_type        = var.vsphere_guest_os_type
   firmware             = "bios"
   CPUs                 = var.cpus
   RAM                  = var.memory
@@ -186,13 +220,7 @@ source "vsphere-iso" "linux" {
   iso_url      = var.iso_url
   iso_checksum = var.iso_checksum
 
-  http_content = {
-    "/ks.cfg" = templatefile("http/rocky9-ks.cfg.pkrtpl.hcl", merge(local.ks_common, {
-      install_disk        = "sda"
-      guest_agent_package = "open-vm-tools"
-      builder_name        = "vsphere-iso"
-    }))
-  }
+  http_content = local.http_vsphere
 
   boot_command = var.boot_command
   boot_wait    = var.boot_wait

@@ -132,6 +132,15 @@ jobs:
       # A vsphere-iso block nobody builds is exactly the block that rots, so it
       # is validated on every PR against dummy credentials.
       - name: packer init and validate (all four sources)
+        env:
+          # `packer init` resolves plugin versions through the GitHub API, which
+          # is rate limited to 60 requests/hour for anonymous callers — shared
+          # across every job on that runner's egress IP, so it fails
+          # intermittently and confusingly (two of five plugins installed, the
+          # rest 403). The workflow's own token lifts it to the authenticated
+          # limit. Read-only and scoped to this run; the job still declares only
+          # `contents: read`.
+          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # A throwaway key pair, from the same script a developer uses. Packer
@@ -142,7 +151,16 @@ jobs:
           # works.
           eval "$(scripts/make-build-key.sh)"
           packer init packer/linux
-          packer validate -var-file=packer/linux/rocky9.pkrvars.hcl packer/linux
+          # Every OS variable file against every source. The two dimensions are
+          # independent — a change to a source block can break one distribution
+          # and not the other, and a change to a variable file can break one
+          # source and not the rest — so validating a single combination proves
+          # much less than it appears to.
+          for varfile in packer/linux/*.pkrvars.hcl; do
+            echo "::group::packer validate ${varfile}"
+            packer validate -var-file="${varfile}" packer/linux
+            echo "::endgroup::"
+          done
 
       # The honest substitute for the Packer IaC scanning that does not exist.
       # Read policy/packer.rego before treating this as equivalent to checkov's

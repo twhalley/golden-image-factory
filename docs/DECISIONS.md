@@ -433,3 +433,34 @@ what is inside an image, that is exactly the wrong trade.
 Also rejected: `dvd.iso`, which verifies but is 15 GB; and `iso_checksum = "none"`, which is
 a real Packer feature, would have made the problem vanish in under a minute, and is denied
 outright by `policy/packer.rego` for precisely this reason.
+
+---
+
+## ADR-0014 — The image standard claims "mandatory access control", not "SELinux"
+
+**Phase:** 1
+**Status:** accepted
+
+**Context.** The shared verification provisioner ran `getenforce` and asserted `Enforcing`.
+That is correct on Rocky and meaningless on Ubuntu, which enforces with AppArmor and ships
+no `getenforce` binary. The first Ubuntu build completed a flawless install — all eight
+filesystems, identity metadata written — and then died at exit 127 on that one line.
+
+The tempting fixes are both wrong. Dropping the check to `getenforce || true` makes it pass
+everywhere by asserting nothing. Branching the provisioner per family duplicates the step
+that exists specifically to be shared.
+
+**Decision.** One check that runs `getenforce` where it exists, `aa-enabled` otherwise, and
+**fails if neither is present**. And, more importantly, the wording changes: the image
+standard claims **mandatory access control is enforcing**, not that SELinux is.
+
+**Consequence.** The claim is now true of every image the factory produces and testable on
+every one of them by phase 4's goss suite. It also sets the pattern for phase 2, where the
+same split recurs and matters much more — a CIS Level 1 subset written against SELinux does
+not transfer to AppArmor, and the applied/not-applied table has to say so per family rather
+than implying one benchmark covers both.
+
+**Rejected.** Claiming "SELinux enforcing" in the image standard while shipping Ubuntu —
+false on half the images, and the kind of claim that survives right up until someone checks.
+Building only RHEL-family images to avoid the problem — the job description names both
+families, and the divergence is the interesting part rather than an obstacle.

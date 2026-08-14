@@ -8,8 +8,8 @@ The claim this repo exists to prove:
 > Hardened, versioned, tested and attested OS images, produced reproducibly on VMware and
 > in the cloud, with evidence of what is inside them and when they expire.
 
-> **Build status: phase 1 of 10 in progress** — Rocky 9 builds end to end; Ubuntu 24.04
-> next. This repo is under active construction and the table below is kept accurate as it goes. Anything not yet built is in
+> **Build status: phases 0 and 1 complete** — Rocky 9 and Ubuntu 24.04 both build end to
+> end. Phase 2 (Ansible hardening) next. This repo is under active construction and the table below is kept accurate as it goes. Anything not yet built is in
 > [Roadmap](#roadmap) with a date, not implied by silence. See
 > [Current state](#current-state) for exactly what exists today.
 
@@ -21,7 +21,7 @@ The load-bearing table. Read it before anything else.
 
 | Packer source | Where it runs | Actually executed? |
 |---|---|---|
-| `qemu` | Local QEMU/KVM, and a GitHub Actions runner from phase 6 | **Yes, locally** — Rocky 9.8, 13m24s, log in [`evidence/`](evidence/qemu-rocky9-2026-08-14.log). **Not yet in CI** |
+| `qemu` | Local QEMU/KVM, and a GitHub Actions runner from phase 6 | **Yes, locally** — [Rocky 9.8, 9m06s](evidence/qemu-rocky9-2026-08-14.log) and [Ubuntu 24.04.4, 14m04s](evidence/qemu-ubuntu2404-2026-08-14.log). **Not yet in CI** |
 | `vmware-iso` | VMware Workstation, local machine | **Not yet** — validated only; Workstation not yet installed on the build host |
 | `vsphere-iso` | Nested ESXi 8 + VCSA, 60-day evaluation | **Not yet** — `packer validate` only until phase 9 lands |
 | `azure-arm` | Azure Compute Gallery, free credit | **Not yet** — `packer validate` only; target phase 8 |
@@ -47,7 +47,7 @@ the same shape. Full reasoning in [ADR-0006](docs/DECISIONS.md#adr-0006).
 
 ## Current state
 
-**Phase 0 — shift-left foundations: complete. Phase 1 — Rocky 9 on QEMU: building.**
+**Phase 0 — shift-left foundations: complete. Phase 1 — Packer skeleton: complete.**
 
 What exists and works today:
 
@@ -66,9 +66,11 @@ What exists and works today:
   misses. Including the part most repos leave out: **IaC scanners cover Terraform well and
   Packer HCL barely at all**, so the Packer templates here are not scanned to the standard
   the Terraform is, and the artefact tests in phase 4 are the control worth trusting.
-- `packer/linux/` — four sources (`qemu`, `vmware-iso`, `vsphere-iso`, `azure-arm`) sharing
-  one templated kickstart, one build block and one manifest. Rocky 9.8 builds unattended on
-  QEMU/KVM in 13m24s; all four validate on every PR.
+- `packer/linux/` — four sources (`qemu`, `vmware-iso`, `vsphere-iso`, `azure-arm`) and two
+  distributions from **one** set of source blocks, one build block and one manifest. Rocky
+  9.8 (kickstart, xfs, SELinux) and Ubuntu 24.04.4 (autoinstall, ext4, AppArmor) both build
+  unattended on QEMU/KVM in ~14 minutes to an identical eight-filesystem layout. All four
+  sources validate on every PR.
 - `policy/packer.rego` — the hand-written OPA policy that stands in for the Packer IaC
   scanning no vendor ships. Five deny rules, each verified to fire against a deliberately
   bad template.
@@ -76,7 +78,7 @@ What exists and works today:
   in git and none outlives the build.
 - [`docs/IMAGE-STANDARD.md`](docs/IMAGE-STANDARD.md) — partition layout, packages and the
   rule that decides what goes in the installer versus configuration management.
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — thirteen ADRs.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — fourteen ADRs.
 - [`evidence/`](evidence/) — the gates tested, with the results that were inconvenient kept
   rather than replaced by ones that pass. Two are worth reading on their own:
   **AWS's canonical example credential pair does not trip gitleaks** (it is allowlisted
@@ -97,8 +99,8 @@ criteria are met and its evidence is committed.
 | Phase | Scope | Target |
 |---|---|---|
 | 0 | Shift-left gates, repo rulesets, docs skeleton | **done — 2026-08-14** |
-| 1 | Packer skeleton; Rocky 9 kickstart, Ubuntu 24.04 autoinstall; `qemu` build end to end | Rocky 9 **done — 2026-08-14**; Ubuntu next |
-| 2 | `harden_linux` Ansible role, CIS Level 1 subset with a stated applied/not-applied table | |
+| 1 | Packer skeleton; Rocky 9 kickstart, Ubuntu 24.04 autoinstall; `qemu` build end to end | **done — 2026-08-14** |
+| 2 | `harden_linux` Ansible role, CIS Level 1 subset with a stated applied/not-applied table | next |
 | 3 | Windows Server 2022 — `Autounattend.xml`, Ansible over WinRM, `harden_windows`, sysprep | |
 | 4 | goss and Pester gates, in-guest, with machine-readable compliance reports | |
 | 6 | CI: lint, matrix build, monthly scheduled rebuild, releases | |

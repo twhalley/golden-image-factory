@@ -1,6 +1,9 @@
 os_name   = "rocky9"
 os_family = "rhel"
 
+vmware_guest_os_type  = "rockylinux-64"
+vsphere_guest_os_type = "rockyLinux_64Guest"
+
 # boot.iso, NOT minimal.iso — and that is a deliberate integrity decision, not a
 # preference. On 2026-08-14 every reachable Rocky mirror served a
 # Rocky-9.8-x86_64-minimal.iso of 2,755,067,904 bytes while the published
