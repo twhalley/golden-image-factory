@@ -59,7 +59,14 @@ What exists and works today:
   misses. Including the part most repos leave out: **IaC scanners cover Terraform well and
   Packer HCL barely at all**, so the Packer templates here are not scanned to the standard
   the Terraform is, and the artefact tests in phase 4 are the control worth trusting.
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — seven ADRs.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — eight ADRs.
+- [`evidence/`](evidence/) — the gates tested, with the results that were inconvenient kept
+  rather than replaced by ones that pass. Two are worth reading on their own:
+  **AWS's canonical example credential pair does not trip gitleaks** (it is allowlisted
+  upstream), and **a randomly generated AWS key does not trip GitHub push protection**
+  (real key IDs carry a checksum). Both obvious ways to test an AWS secret gate produce a
+  false pass. The push-protection test that *did* fire used a Slack webhook, a Stripe key
+  and a SendGrid key, and was rejected server-side with `GH013`.
 
 Everything else in the layout below is a directory waiting for its phase.
 
@@ -130,7 +137,7 @@ scripts/         repo bootstrap
 | [`DECISIONS.md`](docs/DECISIONS.md) | ADRs — context, decision, consequence, rejected alternatives |
 | `IMAGE-STANDARD.md` | What a compliant image contains; applied/not-applied controls (phase 2) |
 | `LIFECYCLE.md` | Versioning, statuses, retirement, consumer obligations (phase 5) |
-| `THREATMODEL.md` | What this pipeline stops and, honestly, what it does not (phase 7) |
+| [`THREATMODEL.md`](docs/THREATMODEL.md) | What this pipeline stops and, honestly, what it does not — **partial**, phase 0 source-side gaps only; artefact side is phase 7 |
 | `RUNBOOK.md` | Copy-paste procedures: build, patch, roll back, tear down (from phase 1) |
 | `VSPHERE-PATH.md` | Nested lab, evaluation expiry, production differences (phase 9) |
 

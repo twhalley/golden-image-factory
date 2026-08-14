@@ -129,6 +129,32 @@ here so the configuration is reviewable, and evidenced by the screenshots in
 | Ruleset bypass list | Empty, including for the repo admin | The admin is the most valuable account to compromise |
 
 Apply with the script in [`../scripts/bootstrap-repo-settings.sh`](../scripts/bootstrap-repo-settings.sh).
+Verified working: see [`evidence/gate3-push-protection-2026-08-14.md`](../evidence/gate3-push-protection-2026-08-14.md),
+where a push carrying fabricated Slack, Stripe and SendGrid credentials was rejected
+server-side with `GH013` after local hooks were deliberately bypassed.
+
+### Push protection is pattern-based, and an AWS key is the wrong way to test it
+
+The same test found something worth carrying into how anyone verifies this control.
+**A randomly generated AWS access key ID is not detected by push protection**, because a
+real one encodes an account identifier and checksum after the `AKIA` prefix; a random
+string matches the shape but fails the structure and is discarded as a false positive.
+Meanwhile gitleaks allowlists AWS's canonical published example pair. So the two obvious
+ways to test an AWS secret gate both produce a false pass, at different gates, for
+different reasons:
+
+| Test credential | Gate 1 (gitleaks) | Gate 3 (push protection) |
+|---|---|---|
+| `AKIAIOSFODNN7EXAMPLE` | allowlisted — not detected | not detected |
+| Random `AKIA` + 16 chars | detected, via generic entropy | **not detected** |
+| A real AWS key | detected | detected |
+
+Test with a checksum-free provider format instead — a Slack webhook URL, a Stripe or
+SendGrid key. More generally: push protection recognises **published provider formats**.
+It will not catch a bespoke internal token, a database password, or a vCenter credential,
+because those have no format for GitHub to recognise — and those are precisely the secrets
+this repo handles. That is why real values live in `PKR_VAR_*` environment variables and
+only `*.pkrvars.hcl.example` with dummy values is committed.
 
 ### Commit signing — a prerequisite that bites
 
