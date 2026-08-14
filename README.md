@@ -138,7 +138,7 @@ scripts/         repo bootstrap
 | `IMAGE-STANDARD.md` | What a compliant image contains; applied/not-applied controls (phase 2) |
 | `LIFECYCLE.md` | Versioning, statuses, retirement, consumer obligations (phase 5) |
 | [`THREATMODEL.md`](docs/THREATMODEL.md) | What this pipeline stops and, honestly, what it does not — **partial**, phase 0 source-side gaps only; artefact side is phase 7 |
-| `RUNBOOK.md` | Copy-paste procedures: build, patch, roll back, tear down (from phase 1) |
+| [`RUNBOOK.md`](docs/RUNBOOK.md) | Copy-paste procedures — **partial**: workstation setup and environment traps now; build, patch, roll back and tear down arrive with the phases that create them |
 | `VSPHERE-PATH.md` | Nested lab, evaluation expiry, production differences (phase 9) |
 
 ## Quickstart
