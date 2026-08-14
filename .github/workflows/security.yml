@@ -132,16 +132,15 @@ jobs:
       # A vsphere-iso block nobody builds is exactly the block that rots, so it
       # is validated on every PR against dummy credentials.
       - name: packer init and validate (all four sources)
-        env:
-          # Structurally valid but useless — enough to satisfy variable
-          # validation without authenticating to anything.
-          PKR_VAR_ssh_public_key: >-
-            ssh-ed25519
-            AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-            ci-validate-only
-          PKR_VAR_ssh_private_key_file: "/dev/null"
         run: |
           set -euo pipefail
+          # A throwaway key pair, from the same script a developer uses. Packer
+          # reads and parses ssh_private_key_file during validate, so a
+          # placeholder path will not do — /dev/null fails with
+          # "Failed to read key: no key found". Using the real script here also
+          # means CI exercises it rather than only the documentation claiming it
+          # works.
+          eval "$(scripts/make-build-key.sh)"
           packer init packer/linux
           packer validate -var-file=packer/linux/rocky9.pkrvars.hcl packer/linux
 
