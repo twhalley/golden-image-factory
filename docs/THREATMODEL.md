@@ -1,11 +1,8 @@
 # Threat model
 
-> **Status: partial — phase 0 content only.** The full model belongs to phase 7, where the
-> artefact-side controls (SBOM, CVE diff gate, signing, provenance, VEX) exist and can be
-> reasoned about. This file exists now because phase 0 has already produced residual gaps,
-> and a gap recorded when it is discovered is a gap; a gap recorded at the end of a project
-> is a memory. Everything below is about the **source** pipeline. Nothing here yet claims
-> anything about built images.
+> **Status: partial — phases 0 to 6.** The artefact-side controls (SBOM, CVE diff gate,
+> signing, provenance, VEX) are **phase 7 and are not built**; the "Deferred to phase 7"
+> section at the end is design, not description. Everything before it is implemented.
 
 ## What the phase 0 gates stop
 
@@ -58,11 +55,33 @@ here; see [ADR-0004](DECISIONS.md#adr-0004).
 **The GitHub-hosted runner itself.** Every gate except the local hooks executes on
 infrastructure this repo does not control, using a token this repo does not mint.
 
-**Everything about the built image.** Phase 0 gates source code. Nothing here says
-anything about what ends up inside a `.qcow2` — not the upstream ISO's integrity, not the
-packages installed from a distribution mirror, not the Packer plugin supply chain, not
-runtime drift after deployment. That is phase 7's subject, and until phase 7 lands, this
-repo makes **no** claim about artefact integrity.
+**The Windows image is untested in every sense.** It does not build
+([ADR-0019](DECISIONS.md#adr-0019)), so the Pester suite has never run and none of the
+Windows controls in `IMAGE-STANDARD.md` are verified. They are specified.
+
+**The Windows installation media has no vendor-published digest.** Rocky publishes one
+(wrong, for `minimal.iso` — [ADR-0013](DECISIONS.md#adr-0013)) and Ubuntu publishes a
+GPG-signed one. Microsoft publishes neither alongside the evaluation ISO. The digest pinned
+in `packer/windows/variables.pkr.hcl` was computed from a download whose size matched the
+advertised `Content-Length`. **That detects change between builds; it does not establish
+that the original download was authentic.** It is the weakest link in this repo's supply
+chain and it is not fixable without a vendor digest.
+
+**No artefact-side integrity controls exist yet.** Nothing here says anything about what
+ends up inside a `.qcow2` beyond what the goss suite asserts about configuration — no SBOM,
+no CVE scan, no signature, no provenance. The packages installed from a distribution mirror
+are trusted on the strength of the distribution's own package signing and nothing this
+repo does. That is phase 7's subject, and until it lands this repo makes **no** claim about
+artefact integrity.
+
+**Runtime drift.** Everything here is build-time. An image is a starting point; what a VM
+looks like a month after deployment is a configuration-management question this repo does
+not answer.
+
+**The test gate runs before finalisation.** The build account, SSH host keys, machine-id and
+cloud-init state are removed at shutdown, *after* goss runs
+([ADR-0015](DECISIONS.md#adr-0015)). Those removals are currently unverified by any
+automated check — the offline artefact verification that would close this is not built.
 
 ## Deferred to phase 7
 

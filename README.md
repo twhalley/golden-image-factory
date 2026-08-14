@@ -198,10 +198,10 @@ scripts/         repo bootstrap
 | [`SHIFT-LEFT.md`](docs/SHIFT-LEFT.md) | Every gate, what it catches, what it misses, why it sits where it sits |
 | [`DECISIONS.md`](docs/DECISIONS.md) | ADRs — context, decision, consequence, rejected alternatives |
 | [`IMAGE-STANDARD.md`](docs/IMAGE-STANDARD.md) | What a compliant image contains — **partial**: layout and packages now, the applied/not-applied control table is phase 2 |
-| `LIFECYCLE.md` | Versioning, statuses, retirement, consumer obligations (phase 5) |
-| [`THREATMODEL.md`](docs/THREATMODEL.md) | What this pipeline stops and, honestly, what it does not — **partial**, phase 0 source-side gaps only; artefact side is phase 7 |
+| [`LIFECYCLE.md`](docs/LIFECYCLE.md) | Versioning, statuses, retirement, consumer obligations — **design only**, phase 5 is not built |
+| [`THREATMODEL.md`](docs/THREATMODEL.md) | What this pipeline stops and, honestly, what it does not — **partial**: source side implemented, artefact side is phase 7 |
 | [`RUNBOOK.md`](docs/RUNBOOK.md) | Copy-paste procedures — **partial**: workstation setup and environment traps now; build, patch, roll back and tear down arrive with the phases that create them |
-| `VSPHERE-PATH.md` | Nested lab, evaluation expiry, production differences (phase 9) |
+| [`VSPHERE-PATH.md`](docs/VSPHERE-PATH.md) | Nested lab, evaluation licensing trap, what a nested lab does *not* represent — **design only**, phase 9 is not built |
 
 ## Quickstart
 
