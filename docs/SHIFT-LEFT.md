@@ -57,6 +57,26 @@ pre-commit run --all-files    # first run, to establish a clean baseline
 that is not a flaw to be engineered around — it is why gates 2 and 3 exist. Local hooks
 exist to give fast feedback to a cooperating developer, not to constrain a hostile one.
 
+### Two things learned from actually testing this gate
+
+Both from [`evidence/gate1-precommit-secret-block-2026-08-14.md`](../evidence/gate1-precommit-secret-block-2026-08-14.md),
+where the test is captured in full.
+
+**AWS's canonical example credentials do not trip gitleaks.** A commit containing
+`AKIAIOSFODNN7EXAMPLE` / `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` succeeded — gitleaks
+reports `no leaks found`, because that pair is allowlisted upstream to avoid firing on the
+documentation it appears in. This is correct behaviour and a trap: validating a secret
+scanner with a vendor's published example proves only that the allowlist works. The test
+here uses randomly generated key material in the real format instead.
+
+**The block came from entropy, not from an AWS rule.** The finding that stopped the commit
+was `generic-api-key` at entropy 4.67 on the secret, not an AWS-specific pattern. gitleaks
+detects what matches a rule or looks random — so **a low-entropy secret in an unrecognised
+format, such as a short database password or a bespoke internal token, passes all three
+gates.** No scanner in this repo catches that. The mitigation is `.gitignore`, the
+`*.pkrvars.hcl.example` convention, `PKR_VAR_*` environment variables for real values, and
+review — not tooling.
+
 ---
 
 ## Gate 2 — `security.yml` on every pull request
