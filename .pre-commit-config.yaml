@@ -38,8 +38,12 @@ repos:
       - id: trailing-whitespace
       - id: mixed-line-ending
         args: ["--fix=lf"]
-        # Autounattend.xml and Pester tests are consumed by Windows but authored
-        # here; git normalises on checkout via .gitattributes, not by storing CRLF.
+        # Windows-consumed files are excluded because .gitattributes already
+        # governs them: they are stored LF and checked out CRLF. Without this
+        # exclusion the two fight — the hook rewrites to LF, .gitattributes
+        # restores CRLF on the next checkout, and every commit reports the same
+        # "fixed mixed line endings" against files nobody touched.
+        exclude: \.(ps1|psm1|psd1|xml|pkrtpl\.hcl|cmd|bat)$
       - id: check-yaml
         args: ["--allow-multiple-documents"]
         exclude: ^ansible/roles/.*/templates/.*\.j2$
