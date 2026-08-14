@@ -16,6 +16,7 @@ permissions: {}
 env:
   GITLEAKS_VERSION: "8.30.1"
   GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+  CHECKOV_VERSION: "3.3.11"
 
 concurrency:
   group: security-${{ github.ref }}
@@ -66,15 +67,28 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Checkov
-        uses: bridgecrewio/checkov-action@99bb2caf247dfd9f03cf984373bc6043d4e32ebf  # v12.1347.0
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
-          directory: .
-          framework: terraform,github_actions,ansible,dockerfile,secrets
-          quiet: true
-          soft_fail: false
-          output_format: cli
-          download_external_modules: false
+          python-version: "3.12"
+
+      - name: Install checkov (version-pinned)
+        # NOT bridgecrewio/checkov-action: that action runs an internal container
+        # image of checkov 2.0.930 (2021), which predates the `ansible` framework
+        # and rejects the framework list outright. See ADR-0008.
+        #
+        # Residual gap, stated rather than hidden: this is version-pinned but not
+        # hash-pinned, so it trusts PyPI and checkov's transitive dependency tree.
+        # Recorded in docs/THREATMODEL.md.
+        run: pip install --disable-pip-version-check "checkov==${CHECKOV_VERSION}"
+
+      - name: Checkov
+        run: |
+          checkov --directory . \
+                  --framework terraform github_actions ansible dockerfile secrets \
+                  --download-external-modules false \
+                  --compact --quiet \
+                  --output cli
 
   # Packer HCL is NOT covered by checkov in any meaningful way. This job is the
   # honest substitute, not an equivalent. See the "Known gap" section of

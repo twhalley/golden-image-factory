@@ -81,8 +81,9 @@ SHA-256 against a checksum committed in the workflow's `env:` block before execu
 hand alongside the version. In exchange the supply chain for this step is one HTTPS
 download with a verified digest, no marketplace dependency, and no licence-key
 conditionality — and it demonstrates the pinning discipline the rest of the repo argues
-for. `actions/checkout` and `bridgecrewio/checkov-action` remain SHA-pinned marketplace
-actions; the point is not to eliminate actions but to be deliberate about each one.
+for. `actions/checkout` and `actions/setup-python` remain SHA-pinned marketplace actions;
+the point is not to eliminate actions but to be deliberate about each one. This decision
+was vindicated for a different tool within the hour — see [ADR-0008](#adr-0008).
 
 **Rejected.** The marketplace action, for the reasons above. Vendoring the gitleaks
 binary into the repo — defeats the large-file rule and rots silently.
@@ -195,3 +196,45 @@ to phase 9 actually landing before interview day. Until it does, the table says
 **Note.** VMware Workstation was not installed at phase 0 and is being installed
 separately. Workstation and KVM cannot both drive `/dev/kvm` concurrently; the two
 hypervisors coexist on disk but not at runtime. Documented in `RUNBOOK.md`.
+
+---
+
+## ADR-0008 — checkov runs from a pinned pip install, not the marketplace action
+
+**Phase:** 0
+**Status:** accepted
+
+**Context.** `security.yml` initially used `bridgecrewio/checkov-action`, SHA-pinned to
+`v12.1347.0` as the pinning policy requires. It failed on first run. The reason is worth
+recording in full:
+
+```
+##[command]/usr/bin/docker run ... bridgecrew/checkov:2.0.930 ...
+checkov: error: argument --framework: invalid choice:
+  'terraform,github_actions,ansible,dockerfile,secrets'
+```
+
+A current, correctly SHA-pinned action was executing **checkov 2.0.930** — a 2021 release,
+three major versions behind the 3.3.11 in use locally. That version has no `ansible`
+framework at all, and takes `--framework` as repeated space-separated values rather than
+the comma-separated string the action passes.
+
+**The general lesson, which matters more than the fix.** Pinning an action to a full commit
+SHA pins *the action's source*. It does not pin what the action runs. This one resolves a
+container image tag internally, so the SHA pin gave a precise handle on a wrapper around an
+unpinned, four-year-stale dependency. The security theatre was invisible until it happened
+to break.
+
+**Decision.** Install checkov directly with `pip install checkov==3.3.11`, version held in
+the workflow's `env:` block alongside the gitleaks pin, and invoke it with the correct
+space-separated framework list. Consistent with [ADR-0003](#adr-0003).
+
+**Consequence.** One fewer marketplace dependency and a version that is actually the one
+tested locally. Two residual gaps, stated rather than hidden: the pip install is
+version-pinned but **not hash-pinned**, so it trusts PyPI and checkov's transitive
+dependency tree; and the version must be bumped by hand, since Dependabot covers the
+`github-actions` ecosystem here, not inline pip pins. Both go in `THREATMODEL.md`.
+
+**Rejected.** Pinning the action to an older tag whose bundled container is newer —
+guesswork, and it would recur. Passing `framework: all` to make the error go away —
+would have masked the stale version entirely, which is the actual defect.
