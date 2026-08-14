@@ -1,0 +1,23 @@
+---
+extends: default
+
+ignore: |
+  .git/
+  .venv/
+  ansible/roles/*/templates/
+
+rules:
+  line-length:
+    max: 120
+    level: warning
+  # Ansible and GitHub Actions both use `on:` / `yes` / `no` as real values.
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: false

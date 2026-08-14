@@ -1,0 +1,36 @@
+# Build artefacts — images never enter git. The large-file pre-commit hook is the
+# backstop for when this list is incomplete.
+output-*/
+builds/
+*.qcow2
+*.vmdk
+*.vmx
+*.ova
+*.ovf
+*.iso
+packer_cache/
+manifest.json
+
+# Real variable values. Only *.pkrvars.hcl.example is committed.
+*.pkrvars.hcl
+!*.pkrvars.hcl.example
+*.auto.pkrvars.hcl
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+
+# Ansible
+ansible/roles/external/
+*.retry
+.vault_pass
+
+# Local tool state
+.venv/
+__pycache__/
+.pre-commit-cache/

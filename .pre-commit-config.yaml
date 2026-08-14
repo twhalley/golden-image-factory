@@ -1,0 +1,104 @@
+---
+# Shift-left gate 1 of 3: the developer's machine.
+# Runs before a commit object exists, so a secret never enters git history at all.
+# See docs/SHIFT-LEFT.md for what each gate catches and — more importantly — misses.
+#
+# Install:  pre-commit install && pre-commit install --hook-type commit-msg
+# Run all:  pre-commit run --all-files
+
+minimum_pre_commit_version: "4.0.0"
+
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+
+repos:
+  # --- Secrets ------------------------------------------------------------
+  # First in the file deliberately: if this fires, nothing else matters.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # --- Generic hygiene ----------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        # Images, ISOs and build artefacts must never be committed. 512 KB is
+        # deliberately tight — the largest legitimate file here is a screenshot.
+        args: ["--maxkb=512"]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-symlinks
+      - id: destroyed-symlinks
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+        # Autounattend.xml and Pester tests are consumed by Windows but authored
+        # here; git normalises on checkout via .gitattributes, not by storing CRLF.
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+        exclude: ^ansible/roles/.*/templates/.*\.j2$
+      - id: check-json
+      - id: pretty-format-json
+        args: ["--autofix", "--indent=2", "--no-sort-keys"]
+        files: ^catalogue/.*\.json$
+
+  # --- YAML ---------------------------------------------------------------
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        args: ["--strict"]
+
+  # --- Shell --------------------------------------------------------------
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.11.0
+    hooks:
+      - id: shellcheck
+
+  # --- Ansible ------------------------------------------------------------
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v26.8.0
+    hooks:
+      - id: ansible-lint
+        files: ^ansible/
+
+  # --- Terraform ----------------------------------------------------------
+  # terraform_validate is intentionally NOT enabled here: it requires
+  # `terraform init`, which needs network access, which makes a pre-commit hook
+  # fail on a train. It runs in CI instead. Formatting and linting are local.
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.108.1
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_tflint
+
+  # --- Packer -------------------------------------------------------------
+  # No upstream Packer hook is maintained to a standard worth pinning, so these
+  # are local hooks against the pinned binary in ~/.local/bin.
+  # `packer validate` is CI-only for the same init/network reason as Terraform.
+  - repo: local
+    hooks:
+      - id: packer-fmt
+        name: packer fmt
+        entry: packer fmt -check -diff
+        language: system
+        files: \.pkr\.(hcl|json)$
+        pass_filenames: false
+        args: ["-recursive", "packer/"]
+
+      - id: conventional-commit
+        name: conventional commit message
+        entry: >-
+          bash -c 'grep -qE
+          "^(feat|fix|docs|ci|chore|refactor|test|build|perf|revert)(\([a-z0-9-]+\))?!?: .+"
+          "$1" || {
+          echo "Commit message must be conventional, e.g. feat(packer): add rocky9 source";
+          exit 1; }' --
+        language: system
+        stages: [commit-msg]

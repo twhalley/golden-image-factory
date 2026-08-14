@@ -1,0 +1,22 @@
+---
+# Actions are pinned to full commit SHAs, which means they never drift — and also
+# means they never get security fixes unless something bumps them. Dependabot is
+# that something. It understands the `# v7.0.1` comment beside a SHA and updates
+# both together.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
